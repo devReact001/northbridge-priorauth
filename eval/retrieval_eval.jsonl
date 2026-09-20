@@ -1,0 +1,30 @@
+{"id": "q01", "question": "Does a patient with a history of cancer and new back pain have to finish physical therapy before a lumbar MRI?", "expected": [{"policy_id": "MP-IMG-001", "section": "3.1"}]}
+{"id": "q02", "question": "Patient cannot urinate and has numbness in the groin area, what imaging criteria apply?", "expected": [{"policy_id": "MP-IMG-001", "section": "3.1"}]}
+{"id": "q03", "question": "How many weeks of treatment before approving a back MRI for sciatica with foot weakness?", "expected": [{"policy_id": "MP-IMG-001", "section": "3.2"}]}
+{"id": "q04", "question": "What counts as conservative therapy for back pain?", "expected": [{"policy_id": "MP-IMG-001", "section": "2"}]}
+{"id": "q05", "question": "Can we get a lumbar MRI for back pain that started three weeks ago with no red flags?", "expected": [{"policy_id": "MP-IMG-001", "section": "4"}]}
+{"id": "q06", "question": "Is a repeat lumbar MRI allowed within a year when nothing has changed?", "expected": [{"policy_id": "MP-IMG-001", "section": "4"}]}
+{"id": "q07", "question": "Which items must be documented in a lumbar spine MRI request?", "expected": [{"policy_id": "MP-IMG-001", "section": "5"}]}
+{"id": "q08", "question": "MRI of the lower spine after fusion surgery, patient now has new leg pain", "expected": [{"policy_id": "MP-IMG-001", "section": "3.4"}]}
+{"id": "q09", "question": "Is an X-ray needed before a knee MRI?", "expected": [{"policy_id": "MP-IMG-002", "section": "3.1"}]}
+{"id": "q10", "question": "Knee keeps locking and catching, McMurray test positive, how long must therapy have been tried?", "expected": [{"policy_id": "MP-IMG-002", "section": "3.2"}]}
+{"id": "q11", "question": "Football injury with swelling and the knee giving way, do we need to wait four weeks?", "expected": [{"policy_id": "MP-IMG-002", "section": "3.3"}]}
+{"id": "q12", "question": "Normal knee X-ray but still cannot bear weight after a fall, suspected hidden fracture", "expected": [{"policy_id": "MP-IMG-002", "section": "3.4"}]}
+{"id": "q13", "question": "Is MRI approved to evaluate known arthritis of the knee?", "expected": [{"policy_id": "MP-IMG-002", "section": "3.5"}]}
+{"id": "q14", "question": "Hot swollen knee with fever, do we need conservative treatment first?", "expected": [{"policy_id": "MP-IMG-002", "section": "3.6"}]}
+{"id": "q15", "question": "What examination findings must be written in a knee MRI request?", "expected": [{"policy_id": "MP-IMG-002", "section": "5"}]}
+{"id": "q16", "question": "Vague knee pain, no exam done today, doctor wants an MRI anyway", "expected": [{"policy_id": "MP-IMG-002", "section": "4"}]}
+{"id": "q17", "question": "Suspected rotator cuff tear with weak arm raise, what therapy must come first?", "expected": [{"policy_id": "MP-IMG-003", "section": "3.1"}]}
+{"id": "q18", "question": "Shoulder keeps popping out of joint, suspected labral tear", "expected": [{"policy_id": "MP-IMG-003", "section": "3.2"}]}
+{"id": "q19", "question": "Frozen shoulder with stiff movement, is MRI covered?", "expected": [{"policy_id": "MP-IMG-003", "section": "3.3"}]}
+{"id": "q20", "question": "What must be documented for a shoulder MRI request?", "expected": [{"policy_id": "MP-IMG-003", "section": "5"}]}
+{"id": "q21", "question": "Shoulder pain for two weeks, no injury and normal strength, requesting MRI", "expected": [{"policy_id": "MP-IMG-003", "section": "4"}]}
+{"id": "q22", "question": "Do we have to say right or left on an imaging request?", "expected": [{"policy_id": "MP-GEN-001", "section": "2.4"}]}
+{"id": "q23", "question": "How old can the clinical note be that we attach to a request?", "expected": [{"policy_id": "MP-GEN-001", "section": "2.3"}]}
+{"id": "q24", "question": "How fast is a standard prior authorization decision made?", "expected": [{"policy_id": "MP-GEN-001", "section": "3.1"}]}
+{"id": "q25", "question": "When can a request be marked urgent and reviewed within 72 hours?", "expected": [{"policy_id": "MP-GEN-001", "section": "3.2"}]}
+{"id": "q26", "question": "How long do we have to answer a request for more information from the payer?", "expected": [{"policy_id": "MP-GEN-001", "section": "4.1"}]}
+{"id": "q27", "question": "How many days do we have to appeal a denial?", "expected": [{"policy_id": "MP-GEN-001", "section": "5.3"}]}
+{"id": "q28", "question": "Does the patient saying they took ibuprofen count as conservative therapy?", "expected": [{"policy_id": "MP-GEN-001", "section": "6"}]}
+{"id": "q29", "question": "Can we ask for authorization after the scan has already been done?", "expected": [{"policy_id": "MP-GEN-001", "section": "3.3"}]}
+{"id": "q30", "question": "Can the ordering doctor talk to a medical director about a denial?", "expected": [{"policy_id": "MP-GEN-001", "section": "5.2"}]}

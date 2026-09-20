@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Week 1: store every intake run so Week 5's dashboard has data to trace.
+-- Every intake run is stored so the Week 5 dashboard has data to trace.
 CREATE TABLE IF NOT EXISTS intake_runs (
     id            SERIAL PRIMARY KEY,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -13,11 +13,20 @@ CREATE TABLE IF NOT EXISTS intake_runs (
     output_tokens INTEGER
 );
 
--- Week 2: policy chunks for RAG (embedding dimension is set when you choose a model).
+-- Policy chunks for RAG. `python -m app.rag.ingest --reset` drops and recreates this table
+-- with the dimension of the chosen embedder (384 for the local BGE model), so this
+-- definition only matters for a fresh database.
 CREATE TABLE IF NOT EXISTS policy_chunks (
-    id         SERIAL PRIMARY KEY,
-    policy_id  TEXT NOT NULL,
-    section    TEXT,
-    content    TEXT NOT NULL,
-    embedding  vector(1024)
+    id           SERIAL PRIMARY KEY,
+    policy_id    TEXT NOT NULL,
+    policy_title TEXT,
+    section      TEXT NOT NULL,
+    heading      TEXT,
+    page         INTEGER,
+    content      TEXT NOT NULL,
+    embedder     TEXT,
+    embedding    vector(384) NOT NULL,
+    content_tsv  tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
 );
+CREATE INDEX IF NOT EXISTS policy_chunks_tsv_idx ON policy_chunks USING gin (content_tsv);
+CREATE INDEX IF NOT EXISTS policy_chunks_vec_idx ON policy_chunks USING hnsw (embedding vector_cosine_ops);

@@ -2,55 +2,68 @@
 
 A multi-agent assistant that helps hospital utilization-review staff prepare prior authorization cases. It extracts evidence from clinical notes, checks it against payer policy, and drafts a submission, with a human reviewer approving every case.
 
-> **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system.
+> **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system. The payer ("Meridian Health Plan") and its policies are fictional.
 
-Status: **Week 1 of 6** (discovery doc, scaffold, intake agent). See [docs/discovery.md](docs/discovery.md).
+Status: **Week 2 of 6** (RAG over payer policies with a scored eval set). See [docs/discovery.md](docs/discovery.md) for the client engagement.
 
-## Quick start
+## Setup (Windows PowerShell)
 
-```bash
-cp .env.example .env            # add your ANTHROPIC_API_KEY
-docker compose up -d db         # Postgres + pgvector
+```powershell
+copy .env.example .env                 # then add your ANTHROPIC_API_KEY
+docker compose up -d db                # Postgres + pgvector
 
 cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-pytest                          # runs with a fake client, no API key needed
-uvicorn app.main:app --reload   # http://localhost:8000/docs
+py -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt -r requirements-rag.txt
+pytest                                 # no API key or model download needed
 ```
 
-Try the intake agent on a sample note:
+macOS / Linux: same steps, with `cp` instead of `copy` and `source .venv/bin/activate`.
 
-```bash
-python ../scripts/run_intake.py app/data/sample_notes/note_01_mri_lumbar.txt   # complete note
-python ../scripts/run_intake.py app/data/sample_notes/note_02_incomplete.txt   # should flag missing info
+## Week 1: intake agent
+
+```powershell
+python ..\scripts\run_intake.py app\data\sample_notes\note_01_mri_lumbar.txt   # complete note
+python ..\scripts\run_intake.py app\data\sample_notes\note_02_incomplete.txt   # flags missing info
 ```
 
-## What the intake agent does
+- Claude tool-use with a forced tool call, so output always matches the `IntakeResult` schema.
+- Every clinical fact carries a verbatim quote, and each quote is checked against the note (`unverified_quotes`).
+- Missing information is listed, never guessed. Low confidence, gaps or unverified quotes set `needs_human_review`.
 
-- Uses Claude tool-use with a forced tool call, so output always matches the `IntakeResult` schema.
-- Every clinical fact carries a verbatim quote from the note.
-- Missing information is listed, never guessed.
-- `needs_human_review` is true when confidence is under 0.75 or anything is missing.
-- Every run is saved to Postgres (tokens, latency, result) to feed the Week 5 dashboard.
+## Week 2: policy RAG
+
+Four fictional payer policy PDFs live in `policies/pdf/` (sources in `policies/src/`). Retrieval is section-level, hybrid (vector + keyword, merged with Reciprocal Rank Fusion), and every hit carries policy id, section and page for citation. Embeddings come from a local model (`BAAI/bge-small-en-v1.5`) so documents never leave the machine; the `Embedder` interface makes it possible to compare hosted models later.
+
+```powershell
+python -m app.rag.ingest --reset                 # chunk PDFs, embed, store (first run downloads the model)
+python ..\scripts\eval_retrieval.py --show-misses  # score keyword vs vector vs hybrid
+uvicorn app.main:app --reload                    # try GET /policy/search?q=... at http://localhost:8000/docs
+```
+
+Scores are written to `eval/results.md`. Re-run the eval after every change to chunking or retrieval, and record what moved.
 
 ## Roadmap
 
 | Week | Deliverable |
 |---|---|
-| 1 | Discovery doc, scaffold, intake agent |
+| 1 | Discovery doc, scaffold, intake agent (done) |
 | 2 | RAG over payer policies, eval set and baseline score |
 | 3 | LangGraph multi-agent workflow with human approval |
 | 4 | FHIR MCP server and integrations |
 | 5 | Next.js reviewer and observability dashboard |
-| 6 | Kubernetes deployment, runbook, case study |
+| 6 | Kubernetes deployment, runbook, model comparison, case study |
 
 ## Project layout
 
 ```
-backend/app/        FastAPI app, agents, schemas
-backend/tests/      pytest (fake Claude client)
-db/init.sql         Postgres schema (pgvector enabled)
-docs/discovery.md   Client discovery document
-scripts/            CLI helpers and Synthea setup notes
+backend/app/agents/   intake agent
+backend/app/rag/      chunking, embedder interface, pgvector store, hybrid search, metrics
+backend/tests/        pytest (fake Claude client, no database needed)
+policies/             fictional payer policies (markdown source + generated PDFs)
+eval/                 30-question retrieval eval set and latest results
+db/init.sql           Postgres schema (pgvector enabled)
+docs/discovery.md     client discovery document
+scripts/              CLI helpers (run_intake, make_policy_pdfs, eval_retrieval)
 ```
