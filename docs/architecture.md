@@ -1,4 +1,4 @@
-# Architecture (Week 4)
+# Architecture (Week 5)
 
 ## Workflow
 
@@ -90,8 +90,35 @@ lists, the transport, and how to inspect them.
 
 | Method and path | Purpose |
 |---|---|
-| `POST /cases` | Run the workflow until it pauses for review |
-| `GET /cases/{id}` | Current status, review packet (with chart facts and the source of each quote) and dispatch result |
-| `POST /cases/{id}/review` | Reviewer approves, edits or rejects (the only way to finalize, and the only trigger for sending) |
-| `GET /cases` | Review queue from Postgres |
+| `POST /cases` | Start a case. Returns `202` with the case id at once; the workflow runs in the background. `?wait=true` blocks and returns the finished packet (used by scripts) |
+| `GET /cases/{id}` | Current status, review packet (chart facts, source of each quote), dispatch result, trace. Live cases come from the checkpointer; after an API restart the saved copy is returned read-only (`resumable: false`) |
+| `POST /cases/{id}/review` | Reviewer approves, edits or rejects (the only way to finalize, and the only trigger for sending). `409` if already decided, `422` if a submission or request still has `[placeholders]` (the case stays open) |
+| `GET /cases` | Review queue: running and failed cases first, then saved cases |
+| `GET /metrics?days=` | Numbers for the dashboard, computed by a pure function over saved cases and their step events |
+| `GET /samples` | The synthetic sample notes, so the UI can start a case in one click |
 | `GET /policy/search` | Policy retrieval with citations |
+| `GET /health` | Liveness (no key needed) |
+
+`API_KEY` in `.env` turns on a shared-secret check (`X-API-Key`) on everything except `/health`. Empty means open,
+which is fine on localhost only.
+
+## Reviewer UI and dashboard (Week 5)
+
+`frontend/` is a Next.js (App Router, TypeScript, Tailwind) app using React Query for polling.
+
+- **The browser never talks to the API directly.** `src/app/api/[...path]/route.ts` is a server-side proxy with an
+  allow-list of routes. It adds `X-API-Key` and hides the backend address, so the secret stays on the server and the
+  API can stay on a private network.
+- **Queue** polls every 3 s while a case is running (10 s otherwise). **Case page** polls every 2 s while the workflow
+  runs, then shows the packet: recommendation, each requirement with its quote and where it came from (note or chart),
+  guardrail notes, the clinical note with quotes highlighted, and the step trace.
+- **Decision panel.** The draft is editable. Unchanged means Approve; changed means "Approve with edits". A draft with
+  placeholders disables Approve and says why; the API enforces the same rule. Reject needs a confirm.
+- **Dashboard.** Outcomes, what reviewers did with each recommendation (an edit or reject is the human overruling the
+  machine, so a high rate on one recommendation shows where to improve), p50/p95 latency per step, which guardrails
+  fired, chart lookup and dispatch health with reasons for blocked sends, cases per day. Every chart has a table view.
+- Charts are plain HTML/CSS rather than a chart library, so marks stay thin, data ends are rounded, status always has
+  an icon and a label, and the palette is one validated set with light and dark variants.
+
+Try the UI without Claude or a database: `python scripts/demo_api.py` runs the real API on a scripted fake model with
+synthetic dashboard data (clearly labelled as demo).

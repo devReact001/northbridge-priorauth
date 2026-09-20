@@ -19,6 +19,11 @@ PLACEHOLDER = re.compile(r"\[[A-Za-z][A-Za-z .'/-]{2,60}\]")
 ICD_IN_FACT = re.compile(r"ICD-10 ([A-Z]\d{2}(?:\.\d{1,4})?)")
 
 
+def placeholders(text: str) -> list[str]:
+    """Bracketed blanks a drafted document leaves for facts the system does not have."""
+    return sorted(set(PLACEHOLDER.findall(text)))
+
+
 def _order_codes(state: CaseState) -> tuple[Optional[str], list[str]]:
     """Codes from the chart's order, used only when the note itself did not state them."""
     cpt, icd = None, []
@@ -41,7 +46,7 @@ def plan(state: CaseState) -> dict[str, Any]:
     kind = draft["kind"]
     if kind == "denial_risk_memo":
         return {"action": "skip", "reason": "An internal memo: nothing is sent outside."}
-    left = sorted(set(PLACEHOLDER.findall(document)))
+    left = placeholders(document)
     if left:
         # A drafted document leaves bracketed blanks for facts the system does not have. A person must fill
         # them in (choose Edit) before anything goes out; sending a letter that says "[Ordering provider name]"

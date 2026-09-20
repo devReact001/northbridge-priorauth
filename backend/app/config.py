@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # Week 4: outbound actions (submission, clinician message) through a write-side MCP server, after approval.
     outbound_enabled: bool = True
     outbox_dir: str = str(BACKEND_DIR.parent / "outbox")
+    # Week 5: when set, every API route except /health needs this in an X-API-Key header. The Next.js server
+    # adds it, so it never reaches a browser. Empty means open, which is fine on localhost only.
+    api_key: str = ""
 
 
 settings = Settings()

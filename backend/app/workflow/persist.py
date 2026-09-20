@@ -71,3 +71,49 @@ def list_cases(conn: psycopg.Connection, status: Optional[str] = None, limit: in
     rows = conn.execute(query, params).fetchall()
     keys = ["case_id", "created_at", "updated_at", "status", "recommendation", "source_name"]
     return [dict(zip(keys, r)) for r in rows]
+
+
+def load_case(conn: psycopg.Connection, case_id: str) -> Optional[dict]:
+    """A saved case with its events, or None. Used when the live checkpointer no longer has the case."""
+    row = conn.execute("SELECT state, status FROM cases WHERE case_id = %s", (case_id,)).fetchone()
+    if row is None:
+        return None
+    events = conn.execute(
+        """SELECT node, ts, latency_ms, input_tokens, output_tokens, detail
+           FROM case_events WHERE case_id = %s ORDER BY seq""",
+        (case_id,),
+    ).fetchall()
+    keys = ["node", "ts", "latency_ms", "input_tokens", "output_tokens", "detail"]
+    trace = []
+    for e in events:
+        item = dict(zip(keys, e))
+        item["ts"] = item["ts"].isoformat(timespec="seconds") if item["ts"] else None
+        trace.append(item)
+    state = dict(row[0])
+    state["trace"] = trace
+    return state
+
+
+def load_for_metrics(conn: psycopg.Connection, days: int = 30) -> list[dict]:
+    """Every case from the last `days` days, each with its trace events, for the dashboard."""
+    cases = conn.execute(
+        """SELECT case_id, created_at, status, recommendation, state
+           FROM cases WHERE created_at >= now() - make_interval(days => %s) ORDER BY created_at""",
+        (days,),
+    ).fetchall()
+    events = conn.execute(
+        """SELECT e.case_id, e.node, e.latency_ms, e.input_tokens, e.output_tokens, e.detail
+           FROM case_events e JOIN cases c ON c.case_id = e.case_id
+           WHERE c.created_at >= now() - make_interval(days => %s) ORDER BY e.case_id, e.seq""",
+        (days,),
+    ).fetchall()
+    by_case: dict[str, list[dict]] = {}
+    for case_id, node, latency, tin, tout, detail in events:
+        by_case.setdefault(case_id, []).append(
+            {"node": node, "latency_ms": latency, "input_tokens": tin, "output_tokens": tout, "detail": detail or {}}
+        )
+    return [
+        {"case_id": cid, "created_at": created, "status": status, "recommendation": rec,
+         "state": state, "events": by_case.get(cid, [])}
+        for cid, created, status, rec, state in cases
+    ]

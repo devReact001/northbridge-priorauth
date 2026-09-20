@@ -139,6 +139,14 @@ def validate_review(state_values: dict, decision: dict) -> ReviewDecision:
     review = ReviewDecision.model_validate(decision)
     if review.action == "approve" and not state_values.get("draft"):
         raise ValueError("Nothing to approve: this case was escalated without a draft. Use 'edit' or 'reject'.")
+    draft = state_values.get("draft") or {}
+    if review.action != "reject" and draft.get("kind") != "denial_risk_memo":
+        document = review.edited_letter if review.action == "edit" else draft.get("body", "")
+        left = dispatch_rules.placeholders(document or "")
+        if left:
+            # Caught here, before the case is finalized, so the reviewer can fix it and try again. Waiting
+            # for the dispatch step would leave an approved case that can no longer be edited.
+            raise ValueError(f"The document still has placeholders to fill in: {', '.join(left)}. Use 'edit'.")
     return review
 
 
@@ -273,27 +281,42 @@ def _config(case_id: str) -> dict:
     return {"configurable": {"thread_id": case_id}}
 
 
-def case_view(graph, case_id: str) -> Optional[dict]:
-    snap = graph.get_state(_config(case_id))
-    values = snap.values
-    if not values:
-        return None
-    awaiting = "human_review" in (snap.next or ())
+def view_from_state(case_id: str, values: dict, awaiting: bool, resumable: bool) -> dict:
+    """The case as the API returns it. One builder for live cases (from the checkpointer) and saved ones
+    (from the cases table), so the reviewer UI sees the same shape for both."""
+    finished = bool(values.get("status"))
     return {
         "case_id": case_id,
         "status": "awaiting_review" if awaiting else values.get("status", "in_progress"),
         "recommendation": (values.get("assessment") or {}).get("recommendation"),
-        "packet": build_packet(values) if awaiting else None,
+        "packet": build_packet(values) if (awaiting or finished) else None,
         "review": values.get("review"),
         "final_document": values.get("final_document"),
         "dispatch": values.get("dispatch"),
+        "note_text": values.get("note_text"),
+        "request_date": values.get("request_date"),
+        "source_name": values.get("source_name"),
+        "resumable": resumable and awaiting,
         "trace": values.get("trace", []),
         "state": values,
     }
 
 
-def start_case(graph, note_text: str, source_name: Optional[str] = None, request_date: Optional[str] = None) -> dict:
-    case_id = uuid.uuid4().hex[:12]
+def case_view(graph, case_id: str) -> Optional[dict]:
+    snap = graph.get_state(_config(case_id))
+    values = snap.values
+    if not values:
+        return None
+    return view_from_state(case_id, values, awaiting="human_review" in (snap.next or ()), resumable=True)
+
+
+def new_case_id() -> str:
+    return uuid.uuid4().hex[:12]
+
+
+def start_case(graph, note_text: str, source_name: Optional[str] = None, request_date: Optional[str] = None,
+               case_id: Optional[str] = None) -> dict:
+    case_id = case_id or new_case_id()
     graph.invoke(
         {
             "case_id": case_id,

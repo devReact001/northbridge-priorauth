@@ -82,7 +82,12 @@ def main() -> None:
     view = start_case(graph, args.note.read_text(encoding="utf-8"), args.note.name, args.request_date)
     persist_view(view)
     show_packet(view)
-    done = resume_case(graph, view["case_id"], ask_decision(view["packet"]["allowed_actions"]))
+    while True:
+        try:
+            done = resume_case(graph, view["case_id"], ask_decision(view["packet"]["allowed_actions"]))
+            break
+        except ValueError as exc:  # for example a draft that still has [placeholders]: fix it and try again
+            print(f"\nNot accepted: {exc}\n")
     persist_view(done)
     print(f"\nFinal status: {done['status']}")
     if done["final_document"]:

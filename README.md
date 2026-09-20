@@ -4,7 +4,7 @@ A multi-agent assistant that helps hospital utilization-review staff prepare pri
 
 > **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system. The payer ("Meridian Health Plan") and its policies are fictional.
 
-Status: **Week 4 of 6** (chart lookup and outbound actions over MCP). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [integrations](docs/integrations.md), [retrieval experiments](docs/retrieval-experiments.md).
+Status: **Week 5 of 6** (reviewer UI and observability dashboard). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [integrations](docs/integrations.md), [retrieval experiments](docs/retrieval-experiments.md).
 
 ## Setup (Windows PowerShell)
 
@@ -55,7 +55,29 @@ $case.status; $case.recommendation
 Invoke-RestMethod -Method Post -Uri "http://localhost:8000/cases/$($case.case_id)/review" -ContentType "application/json" -Body (@{action="approve"; reviewer="Nurse Rao"} | ConvertTo-Json)
 ```
 
-Set `CHECKPOINTER=postgres` in `.env` to keep paused cases across API restarts.
+Set `CHECKPOINTER=postgres` in `.env` to keep paused cases across API restarts. Set `API_KEY` to require an `X-API-Key` header.
+
+## Reviewer UI and dashboard
+
+Needs Node 18.18+ (20 recommended). Two terminals:
+
+```powershell
+# terminal 1: the API (from backend\, venv active)
+uvicorn app.main:app --reload
+
+# terminal 2: the UI
+cd frontend
+copy .env.example .env.local           # API_BASE_URL=http://localhost:8000, API_KEY only if you set one
+npm install
+npm run dev                            # http://localhost:3000
+```
+
+Pick a sample on **New case**, watch it work, then approve, edit or reject on the case page. **Dashboard** shows
+outcomes, reviewer actions, latency per step, guardrail activity, chart lookup and dispatch health. Use
+`CHECKPOINTER=postgres` so a case waiting for review survives an API restart.
+
+No key or database handy? `python ..\scripts\demo_api.py` (from `backend\`) serves the same API on a scripted fake
+model with synthetic dashboard data.
 
 ## Earlier weeks
 
@@ -70,7 +92,7 @@ Set `CHECKPOINTER=postgres` in `.env` to keep paused cases across API restarts.
 | 2 | RAG over payer policies, eval set and baseline score (done) |
 | 3 | LangGraph multi-agent workflow with human approval (done) |
 | 4 | FHIR MCP server and integrations (done) |
-| 5 | Next.js reviewer and observability dashboard |
+| 5 | Next.js reviewer and observability dashboard (done) |
 | 6 | Kubernetes deployment, runbook, model comparison, case study |
 
 ## Project layout
@@ -82,10 +104,11 @@ backend/app/mcp_servers/ FHIR (read) and outbound (write) MCP servers
 backend/app/mcp_client.py  synchronous MCP client used by the workflow
 backend/app/workflow/   LangGraph graph, state, persistence, runtime wiring
 backend/app/rag/        chunking, embedder interface, pgvector store, search strategies, reranker, metrics
+frontend/               Next.js reviewer UI and dashboard (proxy route keeps the API key server-side)
 backend/tests/          pytest with fake Claude, real policy PDFs, in-memory checkpointer
 policies/               fictional payer policies (markdown source + generated PDFs)
 eval/                   38-question retrieval eval set and latest results
 db/init.sql             Postgres schema
 docs/                   discovery, architecture, integrations, retrieval experiments
-scripts/                run_intake, run_workflow, make_policy_pdfs, make_fhir_fixtures, eval_retrieval
+scripts/                run_intake, run_workflow, demo_api, make_policy_pdfs, make_fhir_fixtures, eval_retrieval
 ```
