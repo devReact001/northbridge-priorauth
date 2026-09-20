@@ -1,0 +1,7 @@
+SYNTHETIC NOTE - NOT A REAL PATIENT
+
+Patient: SYN-00982   Age: 47   Sex: Female
+Date of visit: 2026-04-02
+
+Complains of knee pain, worse with stairs. Wants an MRI of the right knee. Has tried some
+ibuprofen. Exam limited today due to time. Will order MRI knee.

@@ -1,0 +1,18 @@
+SYNTHETIC NOTE - NOT A REAL PATIENT
+
+Patient: SYN-00417   Age: 54   Sex: Male
+Date of visit: 2026-03-12
+
+Chief complaint: Lower back pain radiating to the left leg for 4 months.
+
+History: Patient reports persistent low back pain with left-sided sciatica. Completed 8 weeks of
+physical therapy (twice weekly) with minimal improvement. Has been taking naproxen 500 mg twice daily
+for 10 weeks without adequate relief. No history of cancer. No recent trauma. No fever or weight loss.
+
+Exam: Positive straight leg raise on the left at 40 degrees. Decreased sensation over left L5 dermatome.
+Mild weakness of left extensor hallucis longus (4/5). Reflexes symmetric.
+
+Assessment: Lumbar radiculopathy, suspected L4-L5 disc herniation (M54.16).
+
+Plan: Request MRI lumbar spine without contrast (CPT 72148) to evaluate for disc herniation and
+nerve root compression. Continue naproxen. Refer to orthopedics pending results.
