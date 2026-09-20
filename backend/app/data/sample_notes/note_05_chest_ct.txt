@@ -1,0 +1,15 @@
+SYNTHETIC NOTE - NOT A REAL PATIENT
+
+Patient: SYN-03377   Age: 62   Sex: Female
+Date of visit: 2026-03-25
+
+Chief complaint: Persistent dry cough for 3 months.
+
+History: Former smoker, 20 pack-years, quit 8 years ago. Cough not improved with a trial of inhaled
+corticosteroid and antihistamine. No hemoptysis. No weight loss.
+
+Exam: Lungs clear to auscultation. No wheeze. Oxygen saturation 97 percent on room air.
+
+Assessment: Chronic cough (R05.3).
+
+Plan: Order CT chest with contrast (CPT 71260) to evaluate for a structural cause.

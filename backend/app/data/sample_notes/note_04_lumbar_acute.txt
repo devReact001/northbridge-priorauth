@@ -1,0 +1,17 @@
+SYNTHETIC NOTE - NOT A REAL PATIENT
+
+Patient: SYN-02218   Age: 33   Sex: Male
+Date of visit: 2026-03-20
+
+Chief complaint: Low back pain for 2 weeks after lifting boxes at work.
+
+History: Dull ache across the lower back, no pain radiating into the legs. Took ibuprofen for a few days with
+some relief. No fever. No numbness or weakness. No bowel or bladder problems. No history of cancer.
+No recent trauma other than the lifting.
+
+Exam: Lumbar paraspinal muscle tenderness. Straight leg raise negative bilaterally. Strength and sensation
+normal in both legs. Reflexes symmetric.
+
+Assessment: Acute low back pain (M54.50).
+
+Plan: Patient asks for an MRI of the lumbar spine (CPT 72148). Advised heat, stretching and ibuprofen.
