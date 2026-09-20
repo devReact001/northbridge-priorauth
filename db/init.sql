@@ -30,3 +30,27 @@ CREATE TABLE IF NOT EXISTS policy_chunks (
 );
 CREATE INDEX IF NOT EXISTS policy_chunks_tsv_idx ON policy_chunks USING gin (content_tsv);
 CREATE INDEX IF NOT EXISTS policy_chunks_vec_idx ON policy_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- Week 3: one row per case plus one row per workflow step (the trace the Week 5 dashboard reads).
+-- The API also creates these tables on first use, so an existing database needs no migration.
+CREATE TABLE IF NOT EXISTS cases (
+    case_id        TEXT PRIMARY KEY,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status         TEXT NOT NULL,
+    recommendation TEXT,
+    source_name    TEXT,
+    state          JSONB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS case_events (
+    id            SERIAL PRIMARY KEY,
+    case_id       TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+    seq           INTEGER NOT NULL,
+    ts            TIMESTAMPTZ,
+    node          TEXT NOT NULL,
+    latency_ms    INTEGER,
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    detail        JSONB
+);
+CREATE INDEX IF NOT EXISTS case_events_case_idx ON case_events (case_id, seq);

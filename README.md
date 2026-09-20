@@ -4,7 +4,7 @@ A multi-agent assistant that helps hospital utilization-review staff prepare pri
 
 > **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system. The payer ("Meridian Health Plan") and its policies are fictional.
 
-Status: **Week 2 of 6** (RAG over payer policies with a scored eval set). See [docs/discovery.md](docs/discovery.md) for the client engagement.
+Status: **Week 3 of 6** (multi-agent workflow with human approval). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [retrieval experiments](docs/retrieval-experiments.md).
 
 ## Setup (Windows PowerShell)
 
@@ -16,41 +16,50 @@ cd backend
 py -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-rag.txt
-pytest                                 # no API key or model download needed
+pytest                                 # no API key, database or model download needed
+python -m app.rag.ingest --reset       # load the policy PDFs (first run downloads the embedding model)
 ```
 
 macOS / Linux: same steps, with `cp` instead of `copy` and `source .venv/bin/activate`.
 
-## Week 1: intake agent
+## Week 3: run a case end to end
 
 ```powershell
-python ..\scripts\run_intake.py app\data\sample_notes\note_01_mri_lumbar.txt   # complete note
-python ..\scripts\run_intake.py app\data\sample_notes\note_02_incomplete.txt   # flags missing info
+python ..\scripts\run_workflow.py app\data\sample_notes\note_03_knee_meets.txt
 ```
 
-- Claude tool-use with a forced tool call, so output always matches the `IntakeResult` schema.
-- Every clinical fact carries a verbatim quote, and each quote is checked against the note (`unverified_quotes`).
-- Missing information is listed, never guessed. Low confidence, gaps or unverified quotes set `needs_human_review`.
+The terminal shows the review packet (recommendation, each policy requirement with its evidence quote, a draft) and asks you to approve, edit or reject. Try all of the sample notes, because each takes a different route:
 
-## Week 2: policy RAG
+| Note | Expected route |
+|---|---|
+| `note_03_knee_meets.txt` | criteria met, submission letter |
+| `note_02_incomplete.txt` | missing information, request to the clinician |
+| `note_04_lumbar_acute.txt` | exclusion applies, denial-risk memo |
+| `note_05_chest_ct.txt` | no policy covers a chest CT, escalated to a human without a draft |
 
-Four fictional payer policy PDFs live in `policies/pdf/` (sources in `policies/src/`). Retrieval is section-level, hybrid (vector + keyword, merged with Reciprocal Rank Fusion), and every hit carries policy id, section and page for citation. Embeddings come from a local model (`BAAI/bge-small-en-v1.5`) so documents never leave the machine; the `Embedder` interface makes it possible to compare hosted models later.
+Or use the API (`uvicorn app.main:app --reload`, then open http://localhost:8000/docs):
 
 ```powershell
-python -m app.rag.ingest --reset                 # chunk PDFs, embed, store (first run downloads the model)
-python ..\scripts\eval_retrieval.py --show-misses  # score keyword vs vector vs hybrid
-uvicorn app.main:app --reload                    # try GET /policy/search?q=... at http://localhost:8000/docs
+$note = Get-Content app\data\sample_notes\note_03_knee_meets.txt -Raw
+$case = Invoke-RestMethod -Method Post -Uri http://localhost:8000/cases -ContentType "application/json" -Body (@{text=$note} | ConvertTo-Json)
+$case.status; $case.recommendation
+Invoke-RestMethod -Method Post -Uri "http://localhost:8000/cases/$($case.case_id)/review" -ContentType "application/json" -Body (@{action="approve"; reviewer="Nurse Rao"} | ConvertTo-Json)
 ```
 
-Scores are written to `eval/results.md`. Re-run the eval after every change to chunking or retrieval, and record what moved.
+Set `CHECKPOINTER=postgres` in `.env` to keep paused cases across API restarts.
+
+## Earlier weeks
+
+- **Week 1, intake agent:** Claude tool-use with a forced tool call, verbatim quote for every fact, quotes verified against the note, missing information listed instead of guessed. `python ..\scripts\run_intake.py <note>`
+- **Week 2, policy RAG:** section-level chunking of four fictional payer policy PDFs, vector / keyword / hybrid search, a 38-question eval set and a log of retrieval experiments. `python ..\scripts\eval_retrieval.py --modes all --show-misses`
 
 ## Roadmap
 
 | Week | Deliverable |
 |---|---|
 | 1 | Discovery doc, scaffold, intake agent (done) |
-| 2 | RAG over payer policies, eval set and baseline score |
-| 3 | LangGraph multi-agent workflow with human approval |
+| 2 | RAG over payer policies, eval set and baseline score (done) |
+| 3 | LangGraph multi-agent workflow with human approval (done) |
 | 4 | FHIR MCP server and integrations |
 | 5 | Next.js reviewer and observability dashboard |
 | 6 | Kubernetes deployment, runbook, model comparison, case study |
@@ -58,12 +67,13 @@ Scores are written to `eval/results.md`. Re-run the eval after every change to c
 ## Project layout
 
 ```
-backend/app/agents/   intake agent
-backend/app/rag/      chunking, embedder interface, pgvector store, hybrid search, metrics
-backend/tests/        pytest (fake Claude client, no database needed)
-policies/             fictional payer policies (markdown source + generated PDFs)
-eval/                 30-question retrieval eval set and latest results
-db/init.sql           Postgres schema (pgvector enabled)
-docs/discovery.md     client discovery document
-scripts/              CLI helpers (run_intake, make_policy_pdfs, eval_retrieval)
+backend/app/agents/     intake, criteria, drafter agents and the LLM helper
+backend/app/workflow/   LangGraph graph, state, persistence, runtime wiring
+backend/app/rag/        chunking, embedder interface, pgvector store, search strategies, reranker, metrics
+backend/tests/          pytest with fake Claude, real policy PDFs, in-memory checkpointer
+policies/               fictional payer policies (markdown source + generated PDFs)
+eval/                   38-question retrieval eval set and latest results
+db/init.sql             Postgres schema
+docs/                   discovery, architecture, retrieval experiments
+scripts/                run_intake, run_workflow, make_policy_pdfs, eval_retrieval
 ```

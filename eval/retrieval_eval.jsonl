@@ -28,3 +28,11 @@
 {"id": "q28", "question": "Does the patient saying they took ibuprofen count as conservative therapy?", "expected": [{"policy_id": "MP-GEN-001", "section": "6"}]}
 {"id": "q29", "question": "Can we ask for authorization after the scan has already been done?", "expected": [{"policy_id": "MP-GEN-001", "section": "3.3"}]}
 {"id": "q30", "question": "Can the ordering doctor talk to a medical director about a denial?", "expected": [{"policy_id": "MP-GEN-001", "section": "5.2"}]}
+{"id": "q31", "kind": "exact", "question": "What does CPT 73721 cover?", "expected": [{"policy_id": "MP-IMG-002", "section": "1"}]}
+{"id": "q32", "kind": "exact", "question": "Which policy applies to CPT 72158?", "expected": [{"policy_id": "MP-IMG-001", "section": "1"}]}
+{"id": "q33", "kind": "exact", "question": "CPT 73221", "expected": [{"policy_id": "MP-IMG-003", "section": "1"}]}
+{"id": "q34", "kind": "exact", "question": "Is a member ID required on the request?", "expected": [{"policy_id": "MP-GEN-001", "section": "2.1"}]}
+{"id": "q35", "kind": "exact", "question": "What is the empty can Jobe test?", "expected": [{"policy_id": "MP-IMG-003", "section": "2"}]}
+{"id": "q36", "kind": "exact", "question": "Lachman test findings", "expected": [{"policy_id": "MP-IMG-002", "section": "3.3"}, {"policy_id": "MP-IMG-002", "section": "5"}]}
+{"id": "q37", "kind": "exact", "question": "What is CPT 73723?", "expected": [{"policy_id": "MP-IMG-002", "section": "1"}]}
+{"id": "q38", "kind": "exact", "question": "What is CPT 72149?", "expected": [{"policy_id": "MP-IMG-001", "section": "1"}]}
