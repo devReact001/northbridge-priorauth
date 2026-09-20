@@ -1,8 +1,11 @@
 r"""The prior-authorization workflow as a LangGraph state machine.
 
-    intake -> policy -> assess -> draft -> human_review -> finalize
-       \        \         \                    ^
-        +--------+---------+--> escalate ------+
+    intake -> policy -> ehr -> assess -> draft -> human_review -> finalize -> dispatch
+       \        \                \                    ^
+        +--------+----------------+--> escalate ------+
+
+`ehr` (chart lookup through MCP) and `dispatch` (outbound action after approval) are only in the graph when the
+matching toolbox is configured.
 
 Design decisions worth defending in an interview:
 - Agents (intake, assess, draft) do the language work. ROUTING is plain code, because routing is the
@@ -13,6 +16,7 @@ Design decisions worth defending in an interview:
   fakes and no network.
 """
 
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -21,9 +25,12 @@ from typing import Any, Callable, Optional
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
-from ..agents import criteria, drafter
+from ..agents import criteria, drafter, ehr
 from ..agents.intake import run_intake
+from ..fhir.facts import Fact
+from ..mcp_client import Toolbox
 from ..schemas import IntakeResponse, IntakeResult
+from . import dispatch as dispatch_rules
 from .state import CaseState, ReviewDecision
 
 ESCALATE_CONFIDENCE = 0.5
@@ -42,6 +49,8 @@ class Deps:
     llm_client: Any = None
     model: Optional[str] = None
     intake_fn: Optional[Callable[[str], IntakeResponse]] = None
+    ehr_tools: Optional[Toolbox] = None  # read-only FHIR MCP tools; None = the workflow uses the note alone
+    outbound_tools: Optional[Toolbox] = None  # write-side MCP tools, used only after human approval
 
 
 def _event(node: str, latency_ms: int = 0, input_tokens: int = 0, output_tokens: int = 0, **detail) -> dict:
@@ -92,6 +101,14 @@ def build_packet(state: CaseState) -> dict:
         "draft": draft,
         "allowed_actions": ["approve", "edit", "reject"] if draft else ["edit", "reject"],
     }
+    chart = state.get("ehr")
+    if chart:
+        packet["ehr"] = {
+            "status": chart["status"],
+            "detail": chart.get("detail", ""),
+            "tool_calls": chart.get("tool_calls", []),
+            "facts": [{"ref": f["ref"], "date": f.get("date"), "text": f["text"]} for f in chart.get("facts", [])],
+        }
     if assessment:
         a = assessment["assessment"]
         packet["summary"] = a["summary"]
@@ -103,7 +120,8 @@ def build_packet(state: CaseState) -> dict:
                 "status": criteria.pathway_status(criteria.Pathway.model_validate(p)),
                 "requirements": [
                     {"requirement": r["requirement"], "status": r["status"],
-                     "quotes": [e["source_quote"] for e in r["evidence"]]}
+                     "quotes": [e["source_quote"] for e in r["evidence"]],
+                     "sources": r.get("evidence_sources", [])}
                     for r in p["requirements"]
                 ],
             }
@@ -144,11 +162,23 @@ def build_graph(deps: Deps, checkpointer):
             "trace": [_event("policy", policy_id=policy_id, chunks=len(chunks))],
         }
 
+    def ehr_node(state: CaseState):
+        intake = IntakeResult.model_validate(state["intake"]["result"])
+        policy_text = criteria.format_policy_context(state["policy_chunks"])
+        res = ehr.gather(intake, policy_text, state["request_date"], deps.ehr_tools,
+                         client=deps.llm_client, model=deps.model)
+        return {
+            "ehr": res.model_dump(),
+            "trace": [_event("ehr", res.latency_ms, res.input_tokens, res.output_tokens, status=res.status,
+                             facts=len(res.facts), tools=[c["tool"] for c in res.tool_calls], detail=res.detail)],
+        }
+
     def assess_node(state: CaseState):
         intake = IntakeResult.model_validate(state["intake"]["result"])
+        chart_facts = [Fact.model_validate(f) for f in state.get("ehr", {}).get("facts", [])]
         result, call = criteria.assess(
             state["note_text"], intake, state["policy_chunks"], state["request_date"],
-            client=deps.llm_client, model=deps.model,
+            client=deps.llm_client, model=deps.model, ehr_facts=chart_facts,
         )
         return {
             "assessment": result.model_dump(),
@@ -191,28 +221,49 @@ def build_graph(deps: Deps, checkpointer):
             status, document = "rejected", None
         return {"status": status, "final_document": document, "trace": [_event("finalize", status=status)]}
 
+    def dispatch_node(state: CaseState):
+        step = dispatch_rules.plan(state)
+        if step["action"] != "call":
+            outcome = {"status": "skipped" if step["action"] == "skip" else "blocked", "reason": step["reason"]}
+            return {"dispatch": outcome, "trace": [_event("dispatch", **outcome)]}
+        start = time.perf_counter()
+        try:
+            out = deps.outbound_tools.call(step["tool"], step["args"])
+            outcome = {"status": out.get("status", "sent"), "tool": step["tool"], "reference": out.get("reference")}
+        except Exception as e:  # noqa: BLE001  a failed send must not lose the reviewer's decision
+            outcome = {"status": "failed", "tool": step["tool"], "error": f"{type(e).__name__}: {e}"}
+        return {"dispatch": outcome,
+                "trace": [_event("dispatch", int((time.perf_counter() - start) * 1000), **outcome)]}
+
     def route_after_intake(state: CaseState) -> str:
         return "escalate" if escalation_reason(state) else "policy"
 
     def route_after_policy(state: CaseState) -> str:
-        return "escalate" if escalation_reason(state) else "assess"
+        if escalation_reason(state):
+            return "escalate"
+        return "ehr" if deps.ehr_tools is not None else "assess"
+
+    def route_after_finalize(state: CaseState) -> str:
+        return "dispatch" if deps.outbound_tools is not None else "end"
 
     def route_after_assess(state: CaseState) -> str:
         return "escalate" if escalation_reason(state) else "draft"
 
     g = StateGraph(CaseState)
-    for name, fn in [("intake", intake_node), ("policy", policy_node), ("assess", assess_node),
-                     ("draft", draft_node), ("escalate", escalate_node),
-                     ("human_review", human_review_node), ("finalize", finalize_node)]:
+    for name, fn in [("intake", intake_node), ("policy", policy_node), ("ehr", ehr_node), ("assess", assess_node),
+                     ("draft", draft_node), ("escalate", escalate_node), ("human_review", human_review_node),
+                     ("finalize", finalize_node), ("dispatch", dispatch_node)]:
         g.add_node(name, fn)
     g.add_edge(START, "intake")
     g.add_conditional_edges("intake", route_after_intake, {"policy": "policy", "escalate": "escalate"})
-    g.add_conditional_edges("policy", route_after_policy, {"assess": "assess", "escalate": "escalate"})
+    g.add_conditional_edges("policy", route_after_policy, {"ehr": "ehr", "assess": "assess", "escalate": "escalate"})
+    g.add_edge("ehr", "assess")
     g.add_conditional_edges("assess", route_after_assess, {"draft": "draft", "escalate": "escalate"})
     g.add_edge("draft", "human_review")
     g.add_edge("escalate", "human_review")
     g.add_edge("human_review", "finalize")
-    g.add_edge("finalize", END)
+    g.add_conditional_edges("finalize", route_after_finalize, {"dispatch": "dispatch", "end": END})
+    g.add_edge("dispatch", END)
     return g.compile(checkpointer=checkpointer)
 
 
@@ -235,6 +286,7 @@ def case_view(graph, case_id: str) -> Optional[dict]:
         "packet": build_packet(values) if awaiting else None,
         "review": values.get("review"),
         "final_document": values.get("final_document"),
+        "dispatch": values.get("dispatch"),
         "trace": values.get("trace", []),
         "state": values,
     }

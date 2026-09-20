@@ -1,0 +1,344 @@
+{
+ "resourceType": "Bundle",
+ "type": "collection",
+ "entry": [
+  {
+   "resource": {
+    "resourceType": "Patient",
+    "id": "pt-04471",
+    "identifier": [
+     {
+      "system": "urn:northbridge:synthetic-mrn",
+      "value": "SYN-04471"
+     }
+    ],
+    "gender": "female",
+    "birthDate": "1967-09-30"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Condition",
+    "id": "cond-1",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "clinicalStatus": {
+     "text": "active"
+    },
+    "code": {
+     "text": "Pain in right knee",
+     "coding": [
+      {
+       "system": "http://hl7.org/fhir/sid/icd-10-cm",
+       "code": "M25.561",
+       "display": "Pain in right knee"
+      }
+     ]
+    },
+    "onsetDateTime": "2025-12-01"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "MedicationRequest",
+    "id": "med-1",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "authoredOn": "2026-01-30",
+    "requester": {
+     "display": "Dr. Priya Nair (MD)"
+    },
+    "medicationCodeableConcept": {
+     "text": "Naproxen 500 mg tablet"
+    },
+    "dosageInstruction": [
+     {
+      "text": "500 mg twice daily"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Procedure",
+    "id": "proc-1",
+    "status": "completed",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "code": {
+     "text": "Physical therapy, twice weekly"
+    },
+    "performedPeriod": {
+     "start": "2026-02-02",
+     "end": "2026-03-16"
+    },
+    "performer": [
+     {
+      "actor": {
+       "display": "R. Menon (PT, DPT)"
+      }
+     }
+    ],
+    "outcome": {
+     "text": "Minimal improvement after 6 weeks"
+    }
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "DiagnosticReport",
+    "id": "dx-1",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+        "code": "RAD"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "MRI right knee without contrast",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "73721",
+       "display": "MRI right knee without contrast"
+      }
+     ]
+    },
+    "effectiveDateTime": "2026-01-14",
+    "conclusion": "Degenerative signal in the posterior horn of the medial meniscus without a displaced tear. Small joint effusion. No ligament injury."
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "DiagnosticReport",
+    "id": "dx-2",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+        "code": "RAD"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "XR right knee, 2 views, weight-bearing",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "73560",
+       "display": "XR right knee, 2 views, weight-bearing"
+      }
+     ]
+    },
+    "effectiveDateTime": "2026-03-02",
+    "conclusion": "No fracture. Joint spaces preserved."
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-1",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Medial joint line tenderness"
+    },
+    "effectiveDateTime": "2026-03-18",
+    "valueString": "present",
+    "performer": [
+     {
+      "display": "Dr. Priya Nair (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-2",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "McMurray test"
+    },
+    "effectiveDateTime": "2026-03-18",
+    "valueString": "positive",
+    "performer": [
+     {
+      "display": "Dr. Priya Nair (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-3",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Knee effusion"
+    },
+    "effectiveDateTime": "2026-03-18",
+    "valueString": "mild",
+    "performer": [
+     {
+      "display": "Dr. Priya Nair (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-4",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Lachman test"
+    },
+    "effectiveDateTime": "2026-03-18",
+    "valueString": "negative",
+    "performer": [
+     {
+      "display": "Dr. Priya Nair (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-5",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Range of motion"
+    },
+    "effectiveDateTime": "2026-03-18",
+    "valueString": "0 to 120 degrees",
+    "performer": [
+     {
+      "display": "Dr. Priya Nair (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "ServiceRequest",
+    "id": "sr-1",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+     "reference": "Patient/pt-04471"
+    },
+    "code": {
+     "text": "MRI right knee without contrast",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "73721",
+       "display": "MRI right knee without contrast"
+      }
+     ]
+    },
+    "reasonCode": [
+     {
+      "text": "Pain in right knee",
+      "coding": [
+       {
+        "system": "http://hl7.org/fhir/sid/icd-10-cm",
+        "code": "M25.561",
+        "display": "Pain in right knee"
+       }
+      ]
+     }
+    ],
+    "authoredOn": "2026-03-18",
+    "requester": {
+     "display": "Dr. Priya Nair (MD)"
+    }
+   }
+  }
+ ]
+}

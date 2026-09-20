@@ -1,0 +1,135 @@
+{
+ "resourceType": "Bundle",
+ "type": "collection",
+ "entry": [
+  {
+   "resource": {
+    "resourceType": "Patient",
+    "id": "pt-03377",
+    "identifier": [
+     {
+      "system": "urn:northbridge:synthetic-mrn",
+      "value": "SYN-03377"
+     }
+    ],
+    "gender": "female",
+    "birthDate": "1963-07-19"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Condition",
+    "id": "cond-1",
+    "subject": {
+     "reference": "Patient/pt-03377"
+    },
+    "clinicalStatus": {
+     "text": "active"
+    },
+    "code": {
+     "text": "Chronic cough",
+     "coding": [
+      {
+       "system": "http://hl7.org/fhir/sid/icd-10-cm",
+       "code": "R05.3",
+       "display": "Chronic cough"
+      }
+     ]
+    },
+    "onsetDateTime": "2025-12-20"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "MedicationRequest",
+    "id": "med-1",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+     "reference": "Patient/pt-03377"
+    },
+    "authoredOn": "2026-01-10",
+    "requester": {
+     "display": "Dr. Priya Nair (MD)"
+    },
+    "medicationCodeableConcept": {
+     "text": "Fluticasone inhaler"
+    },
+    "dosageInstruction": [
+     {
+      "text": "2 puffs twice daily"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "DiagnosticReport",
+    "id": "dx-1",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-03377"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+        "code": "RAD"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "XR chest, 2 views",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "71046",
+       "display": "XR chest, 2 views"
+      }
+     ]
+    },
+    "effectiveDateTime": "2026-03-01",
+    "conclusion": "No acute cardiopulmonary abnormality."
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "ServiceRequest",
+    "id": "sr-1",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+     "reference": "Patient/pt-03377"
+    },
+    "code": {
+     "text": "CT chest with contrast",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "71260",
+       "display": "CT chest with contrast"
+      }
+     ]
+    },
+    "reasonCode": [
+     {
+      "text": "Chronic cough",
+      "coding": [
+       {
+        "system": "http://hl7.org/fhir/sid/icd-10-cm",
+        "code": "R05.3",
+        "display": "Chronic cough"
+       }
+      ]
+     }
+    ],
+    "authoredOn": "2026-03-25",
+    "requester": {
+     "display": "Dr. Priya Nair (MD)"
+    }
+   }
+  }
+ ]
+}

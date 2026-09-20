@@ -4,7 +4,7 @@ A multi-agent assistant that helps hospital utilization-review staff prepare pri
 
 > **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system. The payer ("Meridian Health Plan") and its policies are fictional.
 
-Status: **Week 3 of 6** (multi-agent workflow with human approval). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [retrieval experiments](docs/retrieval-experiments.md).
+Status: **Week 4 of 6** (chart lookup and outbound actions over MCP). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [integrations](docs/integrations.md), [retrieval experiments](docs/retrieval-experiments.md).
 
 ## Setup (Windows PowerShell)
 
@@ -16,26 +16,35 @@ cd backend
 py -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-rag.txt
-pytest                                 # no API key, database or model download needed
+pytest                                 # no API key, database or model download needed (starts two small MCP servers)
 python -m app.rag.ingest --reset       # load the policy PDFs (first run downloads the embedding model)
 ```
 
 macOS / Linux: same steps, with `cp` instead of `copy` and `source .venv/bin/activate`.
 
-## Week 3: run a case end to end
+## Run a case end to end
 
 ```powershell
-python ..\scripts\run_workflow.py app\data\sample_notes\note_03_knee_meets.txt
+python ..\scripts\run_workflow.py app\data\sample_notes\note_03_knee_meets.txt --request-date 2026-03-20
 ```
 
-The terminal shows the review packet (recommendation, each policy requirement with its evidence quote, a draft) and asks you to approve, edit or reject. Try all of the sample notes, because each takes a different route:
+The terminal shows the chart lookup (which MCP tools were called and the facts they returned), the review packet
+(recommendation, each policy requirement with its evidence quote and where the quote came from, a draft) and asks you
+to approve, edit or reject. After you approve, it shows what was sent out. Each note takes a different route. The
+sample notes are dated in March and April 2026, so pass a `--request-date` close to the visit date:
 
-| Note | Expected route |
-|---|---|
-| `note_03_knee_meets.txt` | criteria met, submission letter |
-| `note_02_incomplete.txt` | missing information, request to the clinician |
-| `note_04_lumbar_acute.txt` | exclusion applies, denial-risk memo |
-| `note_05_chest_ct.txt` | no policy covers a chest CT, escalated to a human without a draft |
+| Note | Request date | Expected route |
+|---|---|---|
+| `note_03_knee_meets.txt` | 2026-03-20 | criteria met, chart corroborates, submission letter |
+| `note_01_mri_lumbar.txt` | 2026-03-20 | criteria met, submission letter |
+| `note_02_incomplete.txt` | 2026-04-05 | thin note; the chart supplies the radiograph, therapy, exam and codes; one gap (locking or catching) remains, so an information request for that alone |
+| `note_06_knee_repeat_mri.txt` | 2026-03-20 | note looks complete, but the chart shows an MRI of the same knee two months earlier: a human must decide |
+| `note_04_lumbar_acute.txt` | 2026-03-25 | exclusion applies, denial-risk memo (internal, nothing sent) |
+| `note_05_chest_ct.txt` | 2026-03-30 | no policy covers a chest CT, escalated to a human without a draft |
+
+Approving a submission letter writes a FHIR `Claim` to the `outbox` folder; approving an information request writes a
+message there; rejecting, or approving a memo, sends nothing. Set `EHR_ENABLED=false` in `.env` to run the note-only
+workflow and compare.
 
 Or use the API (`uvicorn app.main:app --reload`, then open http://localhost:8000/docs):
 
@@ -60,20 +69,23 @@ Set `CHECKPOINTER=postgres` in `.env` to keep paused cases across API restarts.
 | 1 | Discovery doc, scaffold, intake agent (done) |
 | 2 | RAG over payer policies, eval set and baseline score (done) |
 | 3 | LangGraph multi-agent workflow with human approval (done) |
-| 4 | FHIR MCP server and integrations |
+| 4 | FHIR MCP server and integrations (done) |
 | 5 | Next.js reviewer and observability dashboard |
 | 6 | Kubernetes deployment, runbook, model comparison, case study |
 
 ## Project layout
 
 ```
-backend/app/agents/     intake, criteria, drafter agents and the LLM helper
+backend/app/agents/     intake, ehr, criteria, drafter agents and the LLM helper
+backend/app/fhir/       FHIR sources (files or REST), fact builder, the read-only tool surface
+backend/app/mcp_servers/ FHIR (read) and outbound (write) MCP servers
+backend/app/mcp_client.py  synchronous MCP client used by the workflow
 backend/app/workflow/   LangGraph graph, state, persistence, runtime wiring
 backend/app/rag/        chunking, embedder interface, pgvector store, search strategies, reranker, metrics
 backend/tests/          pytest with fake Claude, real policy PDFs, in-memory checkpointer
 policies/               fictional payer policies (markdown source + generated PDFs)
 eval/                   38-question retrieval eval set and latest results
 db/init.sql             Postgres schema
-docs/                   discovery, architecture, retrieval experiments
-scripts/                run_intake, run_workflow, make_policy_pdfs, eval_retrieval
+docs/                   discovery, architecture, integrations, retrieval experiments
+scripts/                run_intake, run_workflow, make_policy_pdfs, make_fhir_fixtures, eval_retrieval
 ```

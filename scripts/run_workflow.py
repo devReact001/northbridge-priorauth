@@ -24,18 +24,26 @@ def show_packet(view: dict) -> None:
         print(f"ESCALATED: {p['escalation_reason']}")
     i = p["intake"]
     print(f"Procedure: {i['requested_procedure']} (CPT {i['procedure_code'] or 'not stated'})   extraction confidence: {i['confidence']}")
+    chart = p.get("ehr")
+    if chart:
+        tools = ", ".join(c["tool"] for c in chart["tool_calls"]) or "none"
+        print(f"Chart lookup: {chart['status']}, {len(chart['facts'])} facts (tools: {tools})")
+        for f in chart["facts"]:
+            print(f"    {f['text']}")
+        if chart["detail"]:
+            print(f"    detail: {chart['detail']}")
     if p.get("summary"):
         print(f"Summary: {p['summary']}")
     for pw in p.get("pathways", []):
         print(f"\n  Pathway {pw['cite']}: {pw['name']}  -> {pw['status'].upper()}")
         for r in pw["requirements"]:
             print(f"    {MARK[r['status']]}{r['requirement']}")
-            for q in r["quotes"]:
-                print(f'                 "{q}"')
+            for q, src in zip(r["quotes"], r["sources"] or ["note"] * len(r["quotes"])):
+                print(f'                 "{q}"' + ("" if src == "note" else f"   [chart: {src}]"))
     for r in p.get("general_requirements", []):
         print(f"  general {MARK[r['status']]}{r['requirement']}")
     for e in p.get("exclusions_triggered", []):
-        print(f"  EXCLUSION ({e['basis']}) {e['policy_id']} section {e['section']}: {e['reason']}")
+        print(f"  EXCLUSION ({e['basis']}) {e['policy_id']} section {e['section']}: {e['reason']}" + (f"   [chart: {e['source']}]" if e.get("source") not in (None, "note") else ""))
     for n in p.get("guardrail_notes", []):
         print(f"  guardrail: {n}")
     if p["draft"]:
@@ -79,6 +87,10 @@ def main() -> None:
     print(f"\nFinal status: {done['status']}")
     if done["final_document"]:
         print(f"\n{done['final_document']}")
+    d = done.get("dispatch")
+    if d:
+        detail = d.get("reference") or d.get("reason") or d.get("error") or ""
+        print(f"\nSent out: {d['status']} {detail}")
     print("\nTrace:")
     for e in done["trace"]:
         print(f"  {e['node']:<13}{e['latency_ms']:>6} ms  {e['input_tokens']:>5} in  {e['output_tokens']:>5} out")

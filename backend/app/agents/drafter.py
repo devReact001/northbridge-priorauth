@@ -47,6 +47,15 @@ Rules:
 - Use ONLY the facts in the supplied intake record and assessment. Never invent clinical facts, dates,
   names, codes or policy sections.
 - Where information is unknown, write a bracketed placeholder such as [ordering provider name].
+- Evidence quotes come with quote_sources. "note" means the clinical note. Any other value (for example
+  "Procedure/proc-1") is a record from the patient's chart: attribute those facts to "the patient's medical
+  record", never to the note.
+- For an information request, ask only about requirements whose status is unclear or not_met and that the
+  chart quotes do not already settle. Never ask about a requirement marked settled_by_chart, or about a
+  requirement that is met. Never ask the clinician to repeat or perform an examination; ask them to
+  document what is missing. Facts the chart already holds may be mentioned as context, not requested again.
+- Every requirement carries its own "cite" value. Use that exact citation for it, and never cite a section you
+  were not given.
 - Cite policy sections in the form (MP-IMG-002 section 3.2).
 - Anything the assessment says is not documented must be described as "not documented", never as "not done"
   or "not obtained".

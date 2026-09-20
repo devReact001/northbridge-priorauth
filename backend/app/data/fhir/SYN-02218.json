@@ -1,0 +1,140 @@
+{
+ "resourceType": "Bundle",
+ "type": "collection",
+ "entry": [
+  {
+   "resource": {
+    "resourceType": "Patient",
+    "id": "pt-02218",
+    "identifier": [
+     {
+      "system": "urn:northbridge:synthetic-mrn",
+      "value": "SYN-02218"
+     }
+    ],
+    "gender": "male",
+    "birthDate": "1992-12-05"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Condition",
+    "id": "cond-1",
+    "subject": {
+     "reference": "Patient/pt-02218"
+    },
+    "clinicalStatus": {
+     "text": "active"
+    },
+    "code": {
+     "text": "Low back pain, unspecified",
+     "coding": [
+      {
+       "system": "http://hl7.org/fhir/sid/icd-10-cm",
+       "code": "M54.50",
+       "display": "Low back pain, unspecified"
+      }
+     ]
+    },
+    "onsetDateTime": "2026-03-06"
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-1",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-02218"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Straight leg raise"
+    },
+    "effectiveDateTime": "2026-03-20",
+    "valueString": "negative bilaterally",
+    "performer": [
+     {
+      "display": "Dr. Arjun Rao (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "Observation",
+    "id": "obs-2",
+    "status": "final",
+    "subject": {
+     "reference": "Patient/pt-02218"
+    },
+    "category": [
+     {
+      "coding": [
+       {
+        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+        "code": "exam"
+       }
+      ]
+     }
+    ],
+    "code": {
+     "text": "Strength and sensation, both legs"
+    },
+    "effectiveDateTime": "2026-03-20",
+    "valueString": "normal",
+    "performer": [
+     {
+      "display": "Dr. Arjun Rao (MD)"
+     }
+    ]
+   }
+  },
+  {
+   "resource": {
+    "resourceType": "ServiceRequest",
+    "id": "sr-1",
+    "status": "active",
+    "intent": "order",
+    "subject": {
+     "reference": "Patient/pt-02218"
+    },
+    "code": {
+     "text": "MRI lumbar spine without contrast",
+     "coding": [
+      {
+       "system": "http://www.ama-assn.org/go/cpt",
+       "code": "72148",
+       "display": "MRI lumbar spine without contrast"
+      }
+     ]
+    },
+    "reasonCode": [
+     {
+      "text": "Low back pain, unspecified",
+      "coding": [
+       {
+        "system": "http://hl7.org/fhir/sid/icd-10-cm",
+        "code": "M54.50",
+        "display": "Low back pain, unspecified"
+       }
+      ]
+     }
+    ],
+    "authoredOn": "2026-03-20",
+    "requester": {
+     "display": "Dr. Arjun Rao (MD)"
+    }
+   }
+  }
+ ]
+}

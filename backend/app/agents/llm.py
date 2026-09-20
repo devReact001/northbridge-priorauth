@@ -17,6 +17,7 @@ class ToolCall:
     input_tokens: int
     output_tokens: int
     latency_ms: int
+    stop_reason: Optional[str] = None
 
 
 def get_client():
@@ -53,4 +54,5 @@ def call_tool(
         input_tokens=message.usage.input_tokens,
         output_tokens=message.usage.output_tokens,
         latency_ms=latency_ms,
+        stop_reason=getattr(message, "stop_reason", None),
     )

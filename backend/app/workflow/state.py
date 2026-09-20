@@ -15,12 +15,14 @@ class CaseState(TypedDict, total=False):
     intake: dict  # IntakeResponse as a dict
     policy_id: Optional[str]
     policy_chunks: list[dict]
+    ehr: dict  # EhrResult as a dict: facts pulled from the patient's chart through MCP tools
     assessment: dict  # AssessmentResult as a dict
     draft: dict  # DraftResult as a dict
     escalation_reason: Optional[str]
     review: dict  # the human reviewer's decision
     status: str
     final_document: Optional[str]
+    dispatch: dict  # what was sent out after approval (or why nothing was)
     trace: Annotated[list[dict], operator.add]  # one event per node, appended, never overwritten
 
 

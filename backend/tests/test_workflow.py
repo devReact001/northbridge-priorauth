@@ -221,7 +221,7 @@ def test_fabricated_quote_downgrades_met_to_unclear():
     view = start_case(_graph(FakeLLM(record_criteria=bad)), NOTE)
     assert view["recommendation"] == "needs_more_info"
     notes = view["packet"]["guardrail_notes"]
-    assert any("does not appear in the note" in n for n in notes)
+    assert any("appears in neither the note nor the EHR facts" in n for n in notes)
     assert any("downgraded to unclear" in n for n in notes)
 
 
@@ -369,3 +369,154 @@ def test_draft_input_shows_only_the_met_pathway_when_one_is_met():
     result = criteria.AssessmentResult(assessment=a, recommendation="needs_more_info")
     names = [p["name"] for p in criteria.summarize_for_draft(result)["pathways"]]
     assert names == ["Suspected meniscal tear"]
+
+
+def test_decide_a_documentation_gap_exclusion_does_not_block_a_met_pathway():
+    ex = [{"policy_id": "MP-IMG-002", "section": "4", "reason": "no exam in note", "basis": "missing_documentation", "source_quote": ""}]
+    assert criteria.decide(_assessment(exclusions_triggered=ex)) == "likely_meets"
+
+
+def test_items_from_a_required_documentation_section_are_not_kept_as_exclusions():
+    ex = [
+        {"policy_id": "MP-IMG-002", "section": "4", "reason": "no exam", "basis": "missing_documentation", "source_quote": ""},
+        {"policy_id": "MP-IMG-002", "section": "5", "reason": "dates not documented", "basis": "missing_documentation", "source_quote": ""},
+    ]
+    chunks = [{"policy_id": "MP-IMG-002", "section": s, "heading": h} for s, h in
+              (("3.1", "Radiograph prerequisite"), ("3.2", "Suspected meniscal tear"), ("3.3", "Suspected ligament injury"),
+               ("2.2", "x"), ("2.3", "x"), ("2.4", "x"), ("6", "x"), ("4", "Exclusions"), ("5", "Required documentation"))]
+    clean, notes = criteria.validate(_assessment(exclusions_triggered=ex), "some note text", chunks)
+    assert [e.section for e in clean.exclusions_triggered] == ["4"]
+    assert any("not an exclusions section" in n for n in notes)
+
+
+def test_an_absence_exclusion_the_model_calls_documented_is_forced_to_missing_documentation():
+    ex = [{"policy_id": "MP-IMG-002", "section": "4", "reason": "No physical examination of the knee documented in the clinical note",
+           "basis": "documented", "source_quote": "Exam limited today due to time."}]
+    chunks = [{"policy_id": "MP-IMG-002", "section": s, "heading": "Exclusions" if s == "4" else "x"} for s in ("3.1", "3.2", "3.3", "2.2", "2.3", "2.4", "6", "4")]
+    clean, _ = criteria.validate(_assessment(exclusions_triggered=ex), "Exam limited today due to time.", chunks)
+    assert clean.exclusions_triggered[0].basis == "missing_documentation"
+
+
+def test_one_ruled_out_pathway_with_others_unclear_is_not_a_denial_risk():
+    a = _assessment(exclusions_triggered=[{"policy_id": "MP-IMG-002", "section": "4", "reason": "repeat MRI",
+                                           "basis": "documented", "source_quote": "x"}])
+    a.pathways[0].requirements[0].status = "not_met"
+    a.pathways = a.pathways[:1] + [a.pathways[0].model_copy(deep=True)]
+    for r in a.pathways[1].requirements:
+        r.status = "unclear"
+    assert criteria.decide(a) == "needs_more_info"
+
+
+class _EmptyThenFull(FakeLLM):
+    """First criteria answer has no pathways; later ones are the normal payload."""
+
+    def __init__(self, second_empty=False):
+        super().__init__()
+        self.second_empty = second_empty
+
+    def create(self, **kwargs):
+        if kwargs["tools"][0]["name"] == "record_criteria":
+            n = self.calls.count("record_criteria")
+            if n == 0 or self.second_empty:
+                self.payloads["record_criteria"] = _criteria(pathways=[])
+            else:
+                self.payloads["record_criteria"] = _criteria()
+        return super().create(**kwargs)
+
+
+def _assess_with(llm):
+    intake = criteria.IntakeResult.model_validate(_intake())
+    return criteria.assess(NOTE, intake, _policy_chunks(), "2026-03-01", client=llm)
+
+
+def test_a_skipped_pathway_list_is_asked_for_again():
+    result, _ = _assess_with(_EmptyThenFull())
+    assert result.assessment.pathways
+    assert any("asked again" in n for n in result.guardrail_notes)
+
+
+def test_two_empty_pathway_lists_are_flagged_as_a_default_not_a_finding():
+    result, _ = _assess_with(_EmptyThenFull(second_empty=True))
+    assert not result.assessment.pathways
+    assert any("default, not a finding" in n for n in result.guardrail_notes)
+
+
+def test_a_code_requirement_is_met_when_the_chart_holds_the_code():
+    from app.fhir.facts import Fact
+    a = _assessment()
+    a.general_requirements = [criteria.RequirementCheck(
+        requirement="The request must include the CPT code for the requested procedure", status="unclear",
+        policy_id=GENERAL_POLICY_ID, section="2.2", evidence=[], rationale="note has no code")]
+    facts = [Fact(ref="ServiceRequest/sr-1", kind="ServiceRequest", date="2026-04-02",
+                  text="ServiceRequest/sr-1 (2026-04-02): MRI right knee without contrast [CPT 73721]")]
+    chunks = [{"policy_id": GENERAL_POLICY_ID, "section": "2.2", "heading": "x"}]
+    clean, notes = criteria.validate(a.model_copy(update={"pathways": []}), "no codes here", chunks, facts)
+    assert clean.general_requirements[0].status == "met"
+    assert any("upgraded to met" in n for n in notes)
+
+
+def test_draft_input_marks_chart_settled_requirements():
+    a = _assessment()
+    r = a.pathways[0].requirements[0]
+    r.status, r.evidence_sources = "unclear", ["Observation/obs-2"]
+    view = criteria.summarize_for_draft(criteria.AssessmentResult(assessment=a, recommendation="needs_more_info"))
+    assert view["pathways"][0]["requirements"][0]["settled_by_chart"] is True
+
+
+def _knee_with_prerequisite(prereq_status, meniscal_status):
+    prereq = {"name": "Radiograph prerequisite", "policy_id": "MP-IMG-002", "section": "3.1",
+              "requirements": [_req("Radiographs within 60 days", prereq_status, "3.1", "positive McMurray test")]}
+    meniscal = _criteria()["pathways"][0]
+    for r in meniscal["requirements"]:
+        r["status"] = meniscal_status
+    return criteria.CriteriaAssessment.model_validate(_criteria(pathways=[prereq, meniscal]))
+
+
+def test_a_met_prerequisite_is_not_an_approval_pathway():
+    """Regression: 3.1 (radiograph prerequisite) was met from the chart and approved a case with unclear real pathways."""
+    a, notes = criteria.validate(_knee_with_prerequisite("met", "unclear"), NOTE, _policy_chunks())
+    assert [p.section for p in a.pathways] == ["3.2"]
+    assert any("prerequisite is not an approval pathway" in n for n in notes)
+    assert criteria.decide(a) == "needs_more_info"
+
+
+def test_an_unmet_prerequisite_stops_a_met_pathway_from_being_likely_meets():
+    a, _ = criteria.validate(_knee_with_prerequisite("unclear", "met"), NOTE, _policy_chunks())
+    assert criteria.decide(a) == "needs_more_info"
+
+
+def test_draft_input_leaves_out_pathways_the_record_has_ruled_out():
+    a = _assessment()
+    a.pathways[0].requirements[0].status = "unclear"
+    ruled_out = a.pathways[0].model_copy(deep=True)
+    ruled_out.section, ruled_out.name = "3.3", "Suspected ligament injury"
+    ruled_out.requirements[0].status = "not_met"
+    a.pathways.append(ruled_out)
+    view = criteria.summarize_for_draft(criteria.AssessmentResult(assessment=a, recommendation="needs_more_info"))
+    assert [p["cite"] for p in view["pathways"]] == ["MP-IMG-002 section 3.2"]
+
+
+class _TruncatedFirst(FakeLLM):
+    """First criteria call stops at max_tokens (with a partial answer); the second is complete."""
+
+    def create(self, **kwargs):
+        message = super().create(**kwargs)
+        if kwargs["tools"][0]["name"] == "record_criteria":
+            message.stop_reason = "max_tokens" if self.calls.count("record_criteria") == 1 else "tool_use"
+        return message
+
+
+def test_a_truncated_assessment_is_retried_and_says_why():
+    result, _ = _assess_with(_TruncatedFirst())
+    assert any("cut off at the token limit" in n for n in result.guardrail_notes)
+
+
+def test_the_assessment_has_room_to_finish():
+    assert criteria.MAX_TOKENS >= 8000
+
+
+def test_general_requirements_carry_their_own_citation_into_the_draft_input():
+    a = _assessment()
+    view = criteria.summarize_for_draft(criteria.AssessmentResult(assessment=a, recommendation="likely_meets"))
+    assert all(g["cite"].startswith(("MP-", "GEN")) or "section" in g["cite"] for g in view["general_requirements"])
+    assert view["general_requirements"][0]["cite"] == f"{GENERAL_POLICY_ID} section 2.4"

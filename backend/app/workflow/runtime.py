@@ -1,11 +1,14 @@
 """Wires the workflow to the real world: local embeddings, pgvector retrieval, a checkpointer."""
 
+import atexit
 import logging
+import sys
 from functools import lru_cache
 from typing import Optional
 
 from ..agents.criteria import GENERAL_POLICY_ID, GENERAL_SECTIONS
-from ..config import settings
+from ..config import BACKEND_DIR, settings
+from ..mcp_client import McpToolbox
 from ..rag import search, store
 from ..rag.embedder import get_embedder
 from ..rag.reranker import get_reranker
@@ -35,6 +38,32 @@ def make_retrieve_policy(embedder, mode: str, reranker=None):
         return top["policy_id"], policy + general
 
     return retrieve
+
+
+def _start_toolbox(name: str, module: str, env: dict) -> Optional[McpToolbox]:
+    """Start an MCP server as a child process. If it cannot start, log it and carry on without it, so a
+    broken integration never stops the note-only workflow."""
+    try:
+        toolbox = McpToolbox(name, sys.executable, ["-m", module], env=env, cwd=str(BACKEND_DIR)).start()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("priorauth").exception("MCP server '%s' did not start; continuing without it", name)
+        return None
+    atexit.register(toolbox.close)
+    return toolbox
+
+
+def make_ehr_tools() -> Optional[McpToolbox]:
+    if not settings.ehr_enabled:
+        return None
+    env = {"FHIR_SOURCE": settings.fhir_source, "FHIR_DIR": settings.fhir_dir,
+           "FHIR_BASE_URL": settings.fhir_base_url, "FHIR_TOKEN": settings.fhir_token}
+    return _start_toolbox("fhir", "app.mcp_servers.fhir_server", env)
+
+
+def make_outbound_tools() -> Optional[McpToolbox]:
+    if not settings.outbound_enabled:
+        return None
+    return _start_toolbox("outbound", "app.mcp_servers.outbound_server", {"OUTBOX_DIR": settings.outbox_dir})
 
 
 def make_checkpointer():
@@ -76,4 +105,5 @@ def get_workflow():
     embedder = get_embedder("local")
     reranker = get_reranker() if search.STRATEGIES[settings.retrieval_mode].rerank else None
     retrieve = make_retrieve_policy(embedder, settings.retrieval_mode, reranker)
-    return build_graph(Deps(retrieve_policy=retrieve), make_checkpointer())
+    deps = Deps(retrieve_policy=retrieve, ehr_tools=make_ehr_tools(), outbound_tools=make_outbound_tools())
+    return build_graph(deps, make_checkpointer())

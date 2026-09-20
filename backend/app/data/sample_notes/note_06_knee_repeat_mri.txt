@@ -1,0 +1,18 @@
+SYNTHETIC NOTE - NOT A REAL PATIENT
+
+Patient: SYN-04471   Age: 58   Sex: Female
+Date of visit: 2026-03-18
+
+Chief complaint: Right knee pain for 16 weeks, not improving.
+
+History: Reports locking and catching of the right knee, worse on stairs. Completed 6 weeks of physical
+therapy twice weekly and naproxen 500 mg twice daily with minimal improvement. No fever. No prior knee surgery.
+
+Exam: Right knee mild effusion. Medial joint line tenderness. Positive McMurray test. Lachman test negative.
+Range of motion 0 to 120 degrees.
+
+Imaging: Weight-bearing radiographs of the right knee on 2026-03-02 showed no fracture and preserved joint spaces.
+
+Assessment: Right knee pain, suspected medial meniscal tear (M25.561).
+
+Plan: MRI right knee without contrast (CPT 73721). Continue naproxen.
