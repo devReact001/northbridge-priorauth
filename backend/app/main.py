@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import threading
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -17,10 +18,36 @@ from .workflow.state import ReviewDecision
 
 logger = logging.getLogger("priorauth")
 
+_warm = threading.Event()
+_warm_error: list[str] = []
+
+
+def _warm_up() -> None:
+    """Runs in a background thread at startup when WARMUP_ON_START is set. /ready reports the outcome."""
+    from .workflow import runtime
+
+    try:
+        _workflow()  # also proves the service is configured (keys, database) before any traffic arrives
+        runtime.warm_up()
+        _warm.set()
+        logger.info("Warm-up finished; the API is ready")
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Warm-up failed")
+        _warm_error.append(str(exc.detail if isinstance(exc, HTTPException) else f"{type(exc).__name__}: {exc}"))
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if settings.warmup_on_start:
+        threading.Thread(target=_warm_up, name="warm-up", daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="Northbridge Prior Authorization Copilot",
     description="Assists human reviewers. Synthetic data only. Not a clinical decision system.",
-    version="0.5.0",
+    version="0.6.0",
+    lifespan=lifespan,
 )
 
 
@@ -36,7 +63,32 @@ AUTH = [Depends(require_api_key)]
 
 @app.get("/health")
 def health():
+    """Liveness: the process is up. Says nothing about whether it can serve a case; see /ready."""
     return {"status": "ok", "model": settings.anthropic_model}
+
+
+def _db_ok() -> bool:
+    if not settings.database_url:
+        return False
+    from .rag import store
+
+    try:
+        with store.connect() as conn:
+            conn.execute("SELECT 1")
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+@app.get("/ready")
+def ready():
+    """Readiness: safe to send a reviewer's case here. The database answers and, if warm-up is on, the models are
+    loaded. Kubernetes holds traffic back until this returns 200."""
+    if not _db_ok():
+        raise HTTPException(status_code=503, detail="The database is not reachable")
+    if settings.warmup_on_start and not _warm.is_set():
+        raise HTTPException(status_code=503, detail=_warm_error[-1] if _warm_error else "Models are still loading")
+    return {"status": "ready"}
 
 
 def _save_run(req: IntakeRequest, resp: IntakeResponse) -> None:

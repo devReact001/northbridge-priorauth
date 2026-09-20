@@ -1,0 +1,42 @@
+# Loads the policy PDFs baked into the API image into pgvector. Run once after the database is up, and again
+# whenever the policies change:  kubectl -n northbridge delete job ingest --ignore-not-found; kubectl apply -f k8s/ingest-job.yaml
+# `--reset` drops and recreates the policy_chunks table, so this is safe to repeat.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ingest
+  namespace: northbridge
+  labels: {app: ingest}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels: {app: ingest}
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: ingest
+          image: northbridge/api:local
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.rag.ingest", "--reset", "--pdf-dir", "/srv/policies/pdf"]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: northbridge-secrets, key: POSTGRES_PASSWORD}
+            - name: DATABASE_URL
+              value: postgresql://priorauth:$(POSTGRES_PASSWORD)@postgres:5432/priorauth
+          resources:
+            requests: {cpu: 250m, memory: 768Mi}
+            limits: {memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

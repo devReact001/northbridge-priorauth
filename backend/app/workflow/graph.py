@@ -18,7 +18,7 @@ Design decisions worth defending in an interview:
 
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -27,6 +27,7 @@ from langgraph.types import Command, interrupt
 
 from ..agents import criteria, drafter, ehr
 from ..agents.intake import run_intake
+from ..config import settings
 from ..fhir.facts import Fact
 from ..mcp_client import Toolbox
 from ..schemas import IntakeResponse, IntakeResult
@@ -51,6 +52,12 @@ class Deps:
     intake_fn: Optional[Callable[[str], IntakeResponse]] = None
     ehr_tools: Optional[Toolbox] = None  # read-only FHIR MCP tools; None = the workflow uses the note alone
     outbound_tools: Optional[Toolbox] = None  # write-side MCP tools, used only after human approval
+    step_models: dict = field(default_factory=dict)  # {"intake"|"ehr"|"assess"|"draft": model}; missing = model
+    assess_lean: bool = False
+    assess_split: bool = False
+
+    def model_for(self, step: str) -> Optional[str]:
+        return self.step_models.get(step) or self.model
 
 
 def _event(node: str, latency_ms: int = 0, input_tokens: int = 0, output_tokens: int = 0, **detail) -> dict:
@@ -151,14 +158,19 @@ def validate_review(state_values: dict, decision: dict) -> ReviewDecision:
 
 
 def build_graph(deps: Deps, checkpointer):
-    intake_fn = deps.intake_fn or (lambda text: run_intake(text, client=deps.llm_client, model=deps.model))
+    intake_fn = deps.intake_fn or (lambda text: run_intake(text, client=deps.llm_client, model=deps.model_for("intake")))
+
+    def used(step: str) -> str:
+        """The model a step ran on, recorded in its trace event so cost can be worked out afterwards."""
+        return deps.model_for(step) or settings.anthropic_model
 
     def intake_node(state: CaseState):
         resp = intake_fn(state["note_text"])
         return {
             "intake": resp.model_dump(),
             "trace": [_event("intake", resp.latency_ms, resp.input_tokens, resp.output_tokens,
-                             confidence=resp.result.confidence, unverified_quotes=len(resp.unverified_quotes))],
+                             confidence=resp.result.confidence, unverified_quotes=len(resp.unverified_quotes),
+                             model=used("intake"))],
         }
 
     def policy_node(state: CaseState):
@@ -174,11 +186,12 @@ def build_graph(deps: Deps, checkpointer):
         intake = IntakeResult.model_validate(state["intake"]["result"])
         policy_text = criteria.format_policy_context(state["policy_chunks"])
         res = ehr.gather(intake, policy_text, state["request_date"], deps.ehr_tools,
-                         client=deps.llm_client, model=deps.model)
+                         client=deps.llm_client, model=deps.model_for("ehr"))
         return {
             "ehr": res.model_dump(),
             "trace": [_event("ehr", res.latency_ms, res.input_tokens, res.output_tokens, status=res.status,
-                             facts=len(res.facts), tools=[c["tool"] for c in res.tool_calls], detail=res.detail)],
+                             facts=len(res.facts), tools=[c["tool"] for c in res.tool_calls], detail=res.detail,
+                             model=used("ehr"))],
         }
 
     def assess_node(state: CaseState):
@@ -186,12 +199,14 @@ def build_graph(deps: Deps, checkpointer):
         chart_facts = [Fact.model_validate(f) for f in state.get("ehr", {}).get("facts", [])]
         result, call = criteria.assess(
             state["note_text"], intake, state["policy_chunks"], state["request_date"],
-            client=deps.llm_client, model=deps.model, ehr_facts=chart_facts,
+            client=deps.llm_client, model=deps.model_for("assess"), ehr_facts=chart_facts,
+            lean=deps.assess_lean, split=deps.assess_split,
         )
         return {
             "assessment": result.model_dump(),
             "trace": [_event("assess", call.latency_ms, call.input_tokens, call.output_tokens,
-                             recommendation=result.recommendation, guardrail_notes=len(result.guardrail_notes))],
+                             recommendation=result.recommendation, guardrail_notes=len(result.guardrail_notes),
+                             model=used("assess"), mode="split" if deps.assess_split else "lean" if deps.assess_lean else "full")],
         }
 
     def draft_node(state: CaseState):
@@ -201,12 +216,12 @@ def build_graph(deps: Deps, checkpointer):
         policy_text = criteria.format_policy_context(state["policy_chunks"])
         d, call = drafter.draft(
             kind, intake, criteria.summarize_for_draft(result), policy_text,
-            client=deps.llm_client, model=deps.model,
+            client=deps.llm_client, model=deps.model_for("draft"),
         )
         return {
             "draft": d.model_dump(),
             "trace": [_event("draft", call.latency_ms, call.input_tokens, call.output_tokens,
-                             kind=kind, warnings=len(d.warnings))],
+                             kind=kind, warnings=len(d.warnings), model=used("draft"))],
         }
 
     def escalate_node(state: CaseState):

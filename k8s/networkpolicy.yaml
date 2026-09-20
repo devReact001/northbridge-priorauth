@@ -1,0 +1,57 @@
+# Only the paths the system needs are open. These are enforced only if the cluster's network plugin supports
+# NetworkPolicy; Docker Desktop's default may not, so treat them as the intended design and verify on a cluster
+# that enforces them (docs/deployment.md).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: northbridge
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-from-anywhere
+  namespace: northbridge
+spec:
+  podSelector:
+    matchLabels: {app: web}
+  policyTypes: ["Ingress"]
+  ingress:
+    - ports:
+        - {port: 3000, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-web-only
+  namespace: northbridge
+spec:
+  podSelector:
+    matchLabels: {app: api}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: web}
+      ports:
+        - {port: 8000, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-api-and-ingest
+  namespace: northbridge
+spec:
+  podSelector:
+    matchLabels: {app: postgres}
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [api, ingest]}
+      ports:
+        - {port: 5432, protocol: TCP}

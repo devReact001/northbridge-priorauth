@@ -1,5 +1,7 @@
 """Week 5: the API the reviewer UI talks to. No network, no database; the workflow runs on the fake model."""
 
+import threading
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -171,3 +173,51 @@ def test_metrics_endpoint_returns_the_computed_aggregates(api, monkeypatch):
 def test_metrics_without_a_database_is_503(api, monkeypatch):
     monkeypatch.setattr(main.settings, "database_url", "")
     assert api.get("/metrics").status_code == 503
+
+
+# ------------------------------------------------------------------ readiness (Week 6)
+
+def test_ready_needs_the_database(api, monkeypatch):
+    monkeypatch.setattr(main, "_db_ok", lambda: False)
+    r = api.get("/ready")
+    assert r.status_code == 503 and "database" in r.json()["detail"]
+    assert api.get("/health").status_code == 200, "liveness does not depend on the database"
+
+
+def test_ready_waits_for_the_models_only_when_warm_up_is_on(api, monkeypatch):
+    monkeypatch.setattr(main, "_db_ok", lambda: True)
+    assert api.get("/ready").json() == {"status": "ready"}
+    monkeypatch.setattr(main.settings, "warmup_on_start", True)
+    monkeypatch.setattr(main, "_warm", threading.Event())
+    monkeypatch.setattr(main, "_warm_error", [])
+    assert api.get("/ready").status_code == 503
+    main._warm.set()
+    assert api.get("/ready").status_code == 200
+
+
+def test_a_failed_warm_up_is_reported_by_ready_instead_of_hanging(api, monkeypatch):
+    from app.workflow import runtime
+
+    monkeypatch.setattr(main, "_db_ok", lambda: True)
+    monkeypatch.setattr(main.settings, "warmup_on_start", True)
+    monkeypatch.setattr(main, "_warm", threading.Event())
+    monkeypatch.setattr(main, "_warm_error", [])
+    monkeypatch.setattr(main, "_workflow", lambda: object())
+    monkeypatch.setattr(runtime, "warm_up", lambda: (_ for _ in ()).throw(RuntimeError("no model files")))
+    main._warm_up()
+    r = api.get("/ready")
+    assert r.status_code == 503 and "no model files" in r.json()["detail"]
+
+
+def test_a_successful_warm_up_makes_the_api_ready(api, monkeypatch):
+    from app.workflow import runtime
+
+    called = []
+    monkeypatch.setattr(main, "_db_ok", lambda: True)
+    monkeypatch.setattr(main.settings, "warmup_on_start", True)
+    monkeypatch.setattr(main, "_warm", threading.Event())
+    monkeypatch.setattr(main, "_warm_error", [])
+    monkeypatch.setattr(main, "_workflow", lambda: object())
+    monkeypatch.setattr(runtime, "warm_up", lambda: called.append(1))
+    main._warm_up()
+    assert called == [1] and api.get("/ready").status_code == 200

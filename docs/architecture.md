@@ -1,4 +1,4 @@
-# Architecture (Week 5)
+# Architecture (Week 6)
 
 ## Workflow
 
@@ -122,3 +122,17 @@ which is fine on localhost only.
 
 Try the UI without Claude or a database: `python scripts/demo_api.py` runs the real API on a scripted fake model with
 synthetic dashboard data (clearly labelled as demo).
+
+## Speed and per-step models (Week 6)
+
+`Deps` carries a model per step (`step_models`) and two switches for the criteria step (`assess_lean`, `assess_split`).
+The lean and split forms are different tool schemas that `expand_lean` turns back into the same `CriteriaAssessment`
+before validation, so guardrails and `decide()` are identical in every mode; a test asserts the three modes produce
+the same assessment from equivalent model output. Each LLM step's trace event records the model it ran on. Details,
+the dependency analysis of why steps cannot simply run in parallel, and how to measure: [latency-and-models.md](latency-and-models.md).
+
+## Deployment (Week 6)
+
+Containers and Kubernetes manifests are described in [deployment.md](deployment.md). The API reports `/health`
+(process up) and `/ready` (database reachable and, with `WARMUP_ON_START`, the retrieval models loaded), and runs one
+replica because a started case runs in that pod's background thread. Operations: [runbook.md](runbook.md).

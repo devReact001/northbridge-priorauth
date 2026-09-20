@@ -8,6 +8,8 @@ supplied, quotes are verified against the note, and the recommendation is comput
 
 import json
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -147,6 +149,113 @@ TOOL = {
     "description": "Record the criteria assessment of the note against the policy.",
     "input_schema": CriteriaAssessment.model_json_schema(),
 }
+
+
+# ---- Week 6: lean and split variants -------------------------------------------------------------------------
+# Time in this step is almost entirely the model WRITING the answer, so the levers are writing less (a shorter
+# schema) and writing in two places at once. Both variants produce the same CriteriaAssessment as the full one
+# (expand_lean fills in what the model no longer writes), so every guardrail and decide() run unchanged.
+
+class LeanRequirement(BaseModel):
+    requirement: str = Field(description="One requirement, in plain words")
+    status: Status
+    quotes: list[str] = Field(default_factory=list, description="Verbatim quotes from the note or the EHR facts that support the status")
+    rationale: str = Field(description="One short sentence")
+
+
+class LeanGeneral(LeanRequirement):
+    policy_id: str
+    section: str = Field(description="Policy section number the requirement comes from, e.g. '2.4'")
+
+
+class LeanPathway(BaseModel):
+    name: str
+    policy_id: str
+    section: str
+    requirements: list[LeanRequirement]
+
+
+class LeanExclusion(BaseModel):
+    policy_id: str
+    section: str
+    reason: str
+    basis: Literal["documented", "missing_documentation"]
+    source_quote: str = Field(description="Verbatim quote that triggers the exclusion, or empty if basis is missing_documentation")
+
+
+class LeanAssessment(BaseModel):
+    policy_applies: bool
+    applicable_policy_id: Optional[str] = None
+    pathways: list[LeanPathway] = Field(default_factory=list)
+    exclusions_triggered: list[LeanExclusion] = Field(default_factory=list)
+    general_requirements: list[LeanGeneral] = Field(default_factory=list)
+    summary: str = Field(description="Two or three sentences for a human reviewer")
+
+
+class SplitPathways(BaseModel):
+    """Part A of a split assessment: everything except the general requirements."""
+
+    policy_applies: bool
+    applicable_policy_id: Optional[str] = None
+    pathways: list[LeanPathway] = Field(default_factory=list)
+    exclusions_triggered: list[LeanExclusion] = Field(default_factory=list)
+    summary: str = Field(description="Two or three sentences on the pathways and exclusions")
+
+
+class SplitGeneral(BaseModel):
+    """Part B of a split assessment: only the general requirements."""
+
+    general_requirements: list[LeanGeneral] = Field(default_factory=list)
+
+
+def expand_lean(data: dict) -> dict:
+    """Turn a lean (or split-merged) assessment into the full shape. Pure; the model never writes these fields."""
+
+    def req(r: dict, policy_id: str, section: str) -> dict:
+        return {
+            "requirement": r.get("requirement", ""), "status": r.get("status", "unclear"),
+            "policy_id": r.get("policy_id", policy_id), "section": r.get("section", section),
+            "evidence": [{"finding": "", "source_quote": q} for q in r.get("quotes", [])],
+            "evidence_sources": [], "rationale": r.get("rationale", ""),
+        }
+
+    out = {k: v for k, v in data.items() if k not in ("pathways", "general_requirements", "exclusions_triggered")}
+    out["pathways"] = [
+        {"name": p["name"], "policy_id": p["policy_id"], "section": p["section"],
+         "requirements": [req(r, p["policy_id"], p["section"]) for r in p.get("requirements", [])]}
+        for p in data.get("pathways", [])
+    ]
+    out["exclusions_triggered"] = [{**e, "source": None} for e in data.get("exclusions_triggered", [])]
+    out["general_requirements"] = [req(r, GENERAL_POLICY_ID, "") for r in data.get("general_requirements", [])]
+    return out
+
+
+_CITE_RULE = "- Cite the policy id and section number for every requirement. Cite only sections that were provided."
+assert _CITE_RULE in SYSTEM_PROMPT
+_LEAN_RULE = (
+    "- Put the policy id and section number on every pathway, exclusion and general requirement, and cite only "
+    "sections that were provided. Give evidence only as 'quotes': a list of verbatim quotes, with no paraphrased "
+    "findings."
+)
+SYSTEM_PROMPT_LEAN = SYSTEM_PROMPT.replace(_CITE_RULE, _LEAN_RULE)
+SYSTEM_PROMPT_A = SYSTEM_PROMPT_LEAN + (
+    "\n\nThis request is PART A of two parts that run at the same time. Do tasks 1 to 3 only: whether the policy "
+    "applies, the approval pathways and the exclusions. Another part covers the general requirements, so do not "
+    "list any. The summary covers the pathways and exclusions only."
+)
+SYSTEM_PROMPT_B = SYSTEM_PROMPT_LEAN + (
+    "\n\nThis request is PART B of two parts that run at the same time. Do task 4 only: the general requirements. "
+    "Another part covers the approval pathways and exclusions, so do not list any. Also list here, with their own "
+    "policy id and section, the requirements of any prerequisite section of the specific policy (a section that "
+    "gates every pathway, such as a required radiograph)."
+)
+
+TOOL_LEAN = {"name": "record_criteria", "description": TOOL["description"],
+             "input_schema": LeanAssessment.model_json_schema()}
+TOOL_PATHWAYS = {"name": "record_pathways", "description": "Record the pathways and exclusions.",
+                 "input_schema": SplitPathways.model_json_schema()}
+TOOL_GENERAL = {"name": "record_general", "description": "Record the general requirements.",
+                "input_schema": SplitGeneral.model_json_schema()}
 
 
 ABSENCE_WORDING = re.compile(r"(no|not|without|absence of|lack of|missing)\b", re.IGNORECASE)
@@ -304,6 +413,72 @@ def validate(
     return a, notes
 
 
+NO_PATHWAYS_NUDGE = (
+    "\n\nYour previous answer listed no pathways. The policy applies, so list every approval pathway "
+    "(each 3.x section) with its requirements."
+)
+
+
+def _single(user: str, client, model, lean: bool) -> tuple[CriteriaAssessment, ToolCall, Optional[str]]:
+    """One call for the whole assessment (the Week 4 behaviour, or its lean variant), with one retry."""
+    if lean:
+        system, tool = SYSTEM_PROMPT_LEAN, TOOL_LEAN
+        parse = lambda d: CriteriaAssessment.model_validate(expand_lean(d))  # noqa: E731
+    else:
+        system, tool, parse = SYSTEM_PROMPT, TOOL, CriteriaAssessment.model_validate
+    call = call_tool(system=system, user=user, tool=tool, client=client, model=model, max_tokens=MAX_TOKENS)
+    raw = parse(call.data)
+    retry_note = None
+    truncated = call.stop_reason == "max_tokens"
+    if raw.policy_applies and (not raw.pathways or truncated):
+        # The model sometimes skips the pathway list. Without it the recommendation would be a default,
+        # not a finding, so ask once more and say so in the record either way.
+        call2 = call_tool(system=system, user=user + NO_PATHWAYS_NUDGE, tool=tool, client=client, model=model,
+                          max_tokens=MAX_TOKENS)
+        raw2 = parse(call2.data)
+        if raw2.pathways:
+            why = "was cut off at the token limit" if truncated else "returned no pathways"
+            raw, call, retry_note = raw2, call2, f"the model {why} at first; asked again and it did"
+        else:
+            retry_note = "the model returned no pathways twice; the recommendation is a default, not a finding"
+    return raw, call, retry_note
+
+
+def _split(user: str, client, model) -> tuple[CriteriaAssessment, ToolCall, Optional[str]]:
+    """Two calls at once: pathways and exclusions, and general requirements. Wall time is the slower call."""
+    start = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fa = pool.submit(call_tool, system=SYSTEM_PROMPT_A, user=user, tool=TOOL_PATHWAYS, client=client,
+                         model=model, max_tokens=MAX_TOKENS)
+        fb = pool.submit(call_tool, system=SYSTEM_PROMPT_B, user=user, tool=TOOL_GENERAL, client=client,
+                         model=model, max_tokens=MAX_TOKENS)
+        ca, cb = fa.result(), fb.result()
+    tokens_in, tokens_out = ca.input_tokens + cb.input_tokens, ca.output_tokens + cb.output_tokens
+    notes: list[str] = []
+    a = SplitPathways.model_validate(ca.data)
+    if a.policy_applies and (not a.pathways or ca.stop_reason == "max_tokens"):
+        why = "was cut off at the token limit" if ca.stop_reason == "max_tokens" else "returned no pathways"
+        retry = call_tool(system=SYSTEM_PROMPT_A, user=user + NO_PATHWAYS_NUDGE, tool=TOOL_PATHWAYS, client=client,
+                          model=model, max_tokens=MAX_TOKENS)
+        tokens_in += retry.input_tokens
+        tokens_out += retry.output_tokens
+        a2 = SplitPathways.model_validate(retry.data)
+        if a2.pathways:
+            a = a2
+            notes.append(f"the model {why} at first; asked again and it did")
+        else:
+            notes.append("the model returned no pathways twice; the recommendation is a default, not a finding")
+    b = SplitGeneral.model_validate(cb.data)
+    if cb.stop_reason == "max_tokens":
+        notes.append("the general requirements were cut off at the token limit; the list may be incomplete")
+    merged = a.model_dump()
+    merged["general_requirements"] = [g.model_dump() for g in b.general_requirements] if a.policy_applies else []
+    raw = CriteriaAssessment.model_validate(expand_lean(merged))
+    call = ToolCall(data=merged, input_tokens=tokens_in, output_tokens=tokens_out,
+                    latency_ms=int((time.perf_counter() - start) * 1000), stop_reason=None)
+    return raw, call, "; ".join(notes) or None
+
+
 def assess(
     note_text: str,
     intake: IntakeResult,
@@ -312,6 +487,8 @@ def assess(
     client: Optional[Any] = None,
     model: Optional[str] = None,
     ehr_facts: Optional[list[Fact]] = None,
+    lean: bool = False,
+    split: bool = False,
 ) -> tuple[AssessmentResult, ToolCall]:
     ehr_block = ""
     if ehr_facts:
@@ -324,24 +501,10 @@ def assess(
         f"{ehr_block}"
         f"<policy>\n{format_policy_context(chunks)}\n</policy>"
     )
-    call = call_tool(system=SYSTEM_PROMPT, user=user, tool=TOOL, client=client, model=model, max_tokens=MAX_TOKENS)
-    raw = CriteriaAssessment.model_validate(call.data)
-    retry_note = None
-    truncated = call.stop_reason == "max_tokens"
-    if raw.policy_applies and (not raw.pathways or truncated):
-        # The model sometimes skips the pathway list. Without it the recommendation would be a default,
-        # not a finding, so ask once more and say so in the record either way.
-        nudge = (
-            "\n\nYour previous answer listed no pathways. The policy applies, so list every approval pathway "
-            "(each 3.x section) with its requirements."
-        )
-        call2 = call_tool(system=SYSTEM_PROMPT, user=user + nudge, tool=TOOL, client=client, model=model, max_tokens=MAX_TOKENS)
-        raw2 = CriteriaAssessment.model_validate(call2.data)
-        if raw2.pathways:
-            why = "was cut off at the token limit" if truncated else "returned no pathways"
-            raw, call, retry_note = raw2, call2, f"the model {why} at first; asked again and it did"
-        else:
-            retry_note = "the model returned no pathways twice; the recommendation is a default, not a finding"
+    if split:
+        raw, call, retry_note = _split(user, client, model)
+    else:
+        raw, call, retry_note = _single(user, client, model, lean)
     clean, notes = validate(raw, note_text, chunks, ehr_facts)
     if retry_note:
         notes.append(retry_note)

@@ -4,7 +4,7 @@ A multi-agent assistant that helps hospital utilization-review staff prepare pri
 
 > **Synthetic data only.** This is a portfolio project. It assists reviewers and is not a clinical or coverage decision system. The payer ("Meridian Health Plan") and its policies are fictional.
 
-Status: **Week 5 of 6** (reviewer UI and observability dashboard). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [integrations](docs/integrations.md), [retrieval experiments](docs/retrieval-experiments.md).
+Status: **Week 6 of 6** (deployment, runbook, latency and model comparison, case study). Docs: [discovery](docs/discovery.md), [architecture](docs/architecture.md), [integrations](docs/integrations.md), [retrieval experiments](docs/retrieval-experiments.md), [latency and models](docs/latency-and-models.md), [deployment](docs/deployment.md), [runbook](docs/runbook.md), [case study](docs/case-study.md).
 
 ## Setup (Windows PowerShell)
 
@@ -79,6 +79,27 @@ outcomes, reviewer actions, latency per step, guardrail activity, chart lookup a
 No key or database handy? `python ..\scripts\demo_api.py` (from `backend\`) serves the same API on a scripted fake
 model with synthetic dashboard data.
 
+## Speed and model choice
+
+The criteria step is 40 to 50 s of a 70 s case. `ASSESS_LEAN`, `ASSESS_SPLIT` and a model per step (`INTAKE_MODEL`,
+`EHR_MODEL`, `ASSESS_MODEL`, `DRAFT_MODEL`) are all off by default. `scripts/compare_models.py` runs the sample notes
+under several settings and reports time, tokens, cost, and whether the recommendation changed. Method and how to read
+the table: [docs/latency-and-models.md](docs/latency-and-models.md).
+
+## Run it on Kubernetes
+
+Docker Desktop with Kubernetes enabled, then:
+
+```powershell
+.\scripts\k8s-deploy.ps1        # builds two images, creates secrets, deploys, loads the policies
+# open http://localhost:8080
+.\scripts\k8s-down.ps1 -Stop    # stop, keep the data;  .\scripts\k8s-down.ps1 deletes everything
+```
+
+Details, what it is and is not: [docs/deployment.md](docs/deployment.md). When something is wrong:
+[docs/runbook.md](docs/runbook.md). CI (`.github/workflows/ci.yml`) runs the tests, builds the UI, validates the
+manifests and builds both images.
+
 ## Earlier weeks
 
 - **Week 1, intake agent:** Claude tool-use with a forced tool call, verbatim quote for every fact, quotes verified against the note, missing information listed instead of guessed. `python ..\scripts\run_intake.py <note>`
@@ -93,7 +114,7 @@ model with synthetic dashboard data.
 | 3 | LangGraph multi-agent workflow with human approval (done) |
 | 4 | FHIR MCP server and integrations (done) |
 | 5 | Next.js reviewer and observability dashboard (done) |
-| 6 | Kubernetes deployment, runbook, model comparison, case study |
+| 6 | Kubernetes deployment, runbook, model comparison, case study (done) |
 
 ## Project layout
 
@@ -105,10 +126,11 @@ backend/app/mcp_client.py  synchronous MCP client used by the workflow
 backend/app/workflow/   LangGraph graph, state, persistence, runtime wiring
 backend/app/rag/        chunking, embedder interface, pgvector store, search strategies, reranker, metrics
 frontend/               Next.js reviewer UI and dashboard (proxy route keeps the API key server-side)
+k8s/                    Kubernetes manifests (Postgres, API, web, network policies, ingest Job)
 backend/tests/          pytest with fake Claude, real policy PDFs, in-memory checkpointer
 policies/               fictional payer policies (markdown source + generated PDFs)
 eval/                   38-question retrieval eval set and latest results
 db/init.sql             Postgres schema
-docs/                   discovery, architecture, integrations, retrieval experiments
-scripts/                run_intake, run_workflow, demo_api, make_policy_pdfs, make_fhir_fixtures, eval_retrieval
+docs/                   discovery, architecture, integrations, retrieval experiments, latency, deployment, runbook, case study
+scripts/                run_intake, run_workflow, demo_api, compare_models, make_policy_pdfs, make_fhir_fixtures, eval_retrieval
 ```

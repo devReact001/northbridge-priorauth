@@ -1,0 +1,14 @@
+# kubectl apply -k k8s      (the ingest Job is applied separately, after the database is ready)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - api.yaml
+  - web.yaml
+  - networkpolicy.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: northbridge
+    includeSelectors: false

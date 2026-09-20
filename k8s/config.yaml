@@ -1,0 +1,21 @@
+# Non-secret settings. Secrets (the Anthropic key, the API key, the database password) live in the Secret
+# `northbridge-secrets`, created by scripts/k8s-deploy.ps1 and never written to a file in this repository.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: northbridge-config
+  namespace: northbridge
+data:
+  ANTHROPIC_MODEL: "claude-haiku-4-5"
+  RETRIEVAL_MODE: "hybrid_w3_rerank"
+  # Paused cases live in Postgres, so a reviewer can decide on a case after the API pod restarts.
+  CHECKPOINTER: "postgres"
+  EHR_ENABLED: "true"
+  FHIR_SOURCE: "bundle"
+  OUTBOUND_ENABLED: "true"
+  OUTBOX_DIR: "/data/outbox"
+  # Load the models before the pod reports ready, so the first case is not the one that pays for it.
+  WARMUP_ON_START: "true"
+  # Speed settings (docs/latency-and-models.md). Leave off until scripts/compare_models.py says they are safe.
+  ASSESS_LEAN: "false"
+  ASSESS_SPLIT: "false"

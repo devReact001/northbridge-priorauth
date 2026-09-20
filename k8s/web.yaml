@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: northbridge
+  labels: {app: web}
+spec:
+  # On Docker Desktop a LoadBalancer service is published on localhost, here http://localhost:8080.
+  type: LoadBalancer
+  selector: {app: web}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: northbridge
+  labels: {app: web}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: web
+          image: northbridge/web:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 3000}
+          env:
+            # Read by the server-side proxy route on each request. The browser never sees either value.
+            - {name: API_BASE_URL, value: "http://api:8000"}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef: {name: northbridge-secrets, key: API_KEY}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

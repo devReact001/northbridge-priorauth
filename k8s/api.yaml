@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: outbox
+  namespace: northbridge
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: {storage: 256Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: northbridge
+  labels: {app: api}
+spec:
+  selector: {app: api}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: northbridge
+  labels: {app: api}
+spec:
+  # One replica on purpose. A started case runs in a background thread of the pod that accepted it, and the
+  # outbox is a single-writer volume. Scaling out needs a work queue first (docs/case-study.md, "What is next").
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api}
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: api
+          image: northbridge/api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8000}
+          envFrom:
+            - configMapRef: {name: northbridge-config}
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef: {name: northbridge-secrets, key: ANTHROPIC_API_KEY}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef: {name: northbridge-secrets, key: API_KEY}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: northbridge-secrets, key: POSTGRES_PASSWORD}
+            # $(POSTGRES_PASSWORD) is filled in by Kubernetes from the variable above, which must come first.
+            - name: DATABASE_URL
+              value: postgresql://priorauth:$(POSTGRES_PASSWORD)@postgres:5432/priorauth
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {memory: 3Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: outbox, mountPath: /data/outbox}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: outbox
+          persistentVolumeClaim: {claimName: outbox}
+        - name: tmp
+          emptyDir: {}

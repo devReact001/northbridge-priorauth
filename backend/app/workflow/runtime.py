@@ -101,9 +101,28 @@ def persist_view(view: dict) -> bool:
 
 
 @lru_cache(maxsize=1)
-def get_workflow():
+def _models():
+    """The embedder and reranker, created once and shared by the workflow and the warm-up."""
     embedder = get_embedder("local")
     reranker = get_reranker() if search.STRATEGIES[settings.retrieval_mode].rerank else None
+    return embedder, reranker
+
+
+def warm_up() -> None:
+    """Load the models now. Their first use downloads or reads them from disk, which takes tens of seconds and
+    would otherwise land on the first reviewer's case."""
+    embedder, reranker = _models()
+    embedder.embed_query("warm up")
+    if reranker is not None:
+        reranker.rerank("warm up", [{"content": "warm up"}])
+
+
+@lru_cache(maxsize=1)
+def get_workflow():
+    embedder, reranker = _models()
     retrieve = make_retrieve_policy(embedder, settings.retrieval_mode, reranker)
-    deps = Deps(retrieve_policy=retrieve, ehr_tools=make_ehr_tools(), outbound_tools=make_outbound_tools())
+    step_models = {s: getattr(settings, f"{s}_model") for s in ("intake", "ehr", "assess", "draft")}
+    deps = Deps(retrieve_policy=retrieve, ehr_tools=make_ehr_tools(), outbound_tools=make_outbound_tools(),
+                step_models={k: v for k, v in step_models.items() if v},
+                assess_lean=settings.assess_lean, assess_split=settings.assess_split)
     return build_graph(deps, make_checkpointer())

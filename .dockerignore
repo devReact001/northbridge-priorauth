@@ -1,0 +1,20 @@
+# The build context is the project root (backend/Dockerfile copies from backend/ and policies/).
+# Keep secrets, virtual environments and build output out of it: they would be sent to the daemon and could be
+# copied into an image.
+.git
+.github
+.env
+.env.*
+!.env.example
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+frontend
+outbox
+eval
+docs
+db
+k8s
